@@ -363,7 +363,7 @@
       '<div class="section-head" style="margin-bottom:8px"><div>' +
       '<h2 style="margin:0">Grading: ' + esc(a.title) + '</h2>' +
       '<div class="card-sub" style="margin:2px 0 0">Type a number 1–8 in each cell. ' +
-      '<b>Enter</b> or <b>↓</b> moves down · <b>Tab</b> moves across · saves automatically.</div></div>' +
+      '<b>Enter</b> jumps to the next empty cell · <b>↓/↑</b> move down/up · <b>Tab</b> moves across · saves automatically.</div></div>' +
       '<button class="btn btn-sm" id="gg-done">← Back to overview</button></div>' +
       '<div class="gradebook-wrap"><table class="gradebook grade-assignment-table">' +
       '<thead><tr><th class="student-col">Student</th>' + heads +
@@ -384,6 +384,27 @@
       var guard = 0;
       while (el && el.disabled && guard < nRows) { r += 1; el = inputAt(r, c); guard++; }
       if (el && !el.disabled) { el.focus(); el.select(); }
+    }
+    // Column-major order (down a column, then the top of the next column).
+    function orderedInputs() {
+      var arr = [];
+      for (var c = 0; c < nCols; c++) {
+        for (var r = 0; r < nRows; r++) {
+          var el = inputAt(r, c);
+          if (el) arr.push(el);
+        }
+      }
+      return arr;
+    }
+    // Enter jumps to the next still-empty, non-excused cell (wrapping around).
+    function focusNextEmpty(fromEl) {
+      var arr = orderedInputs();
+      var idx = arr.indexOf(fromEl);
+      for (var k = 1; k <= arr.length; k++) {
+        var el = arr[(idx + k) % arr.length];
+        if (!el.disabled && el.value === '') { el.focus(); el.select(); return; }
+      }
+      fromEl.blur(); // nothing left to fill
     }
     function readScores(sid) {
       var out = {};
@@ -416,7 +437,8 @@
       });
       inp.addEventListener('keydown', function (e) {
         var r = Number(inp.dataset.r), c = Number(inp.dataset.c);
-        if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); focusCell(r + 1, c); }
+        if (e.key === 'Enter') { e.preventDefault(); focusNextEmpty(inp); }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); focusCell(r + 1, c); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(r - 1, c); }
       });
     });

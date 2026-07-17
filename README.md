@@ -37,8 +37,9 @@ When entering grades you just **type the number 1–8** — no dropdowns.
   as the weighted average.
 - **Spreadsheet-style grade entry.** Pick an assignment and grade the whole
   class in one editable grid — **type `1`–`8`** in each cell and move with the
-  **keyboard** (Enter/↓ down, Tab across). No pop-up windows; it saves as you
-  type and the overall updates live.
+  **keyboard**: **Enter jumps to the next empty cell**, ↓/↑ move down/up, Tab
+  moves across. No pop-up windows; it saves as you type and the overall
+  updates live.
 - **Sortable gradebook.** Order the overview columns **by category** or **by
   date created**.
 - **Categories with weights.** Create categories (Quizzes, Projects, Homework,
