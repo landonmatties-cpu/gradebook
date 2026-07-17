@@ -14,13 +14,15 @@
         <span class="brand-mark">BC</span>
         <span class="brand-name">Gradebook</span>
       </div>
-      <button id="overview-btn" class="btn btn-ghost btn-block">Class Overview</button>
       <button id="add-class-btn" class="btn btn-primary btn-block">+ Add Class</button>
       <div class="class-list-label">Classes</div>
       <nav id="class-list" class="class-list"></nav>
       <div class="sidebar-footer">
-        <button id="export-btn" class="btn btn-ghost btn-sm">Export backup</button>
-        <button id="import-btn" class="btn btn-ghost btn-sm">Import backup</button>
+        <button id="theme-btn" class="btn btn-ghost btn-sm btn-block">🌙 Dark mode</button>
+        <div class="footer-row">
+          <button id="export-btn" class="btn btn-ghost btn-sm">Export backup</button>
+          <button id="import-btn" class="btn btn-ghost btn-sm">Import backup</button>
+        </div>
         <div id="save-status" class="save-status"></div>
       </div>
     </aside>
@@ -29,9 +31,10 @@
     <main id="main">
       <div id="main-empty" class="empty-state">
         <h1>Welcome to your gradebook</h1>
-        <p>Create your first class to get started. You can add the core BC
-           middle-school subjects with their curricular competencies already
-           filled in, or build a class from scratch.</p>
+        <p>Create your first class to get started. A class is a group of
+           students — then you add the subjects you teach that class. For a
+           homeroom, add several subjects; for a single-subject block, just add
+           one.</p>
         <button class="btn btn-primary" id="empty-add-class">+ Add your first class</button>
       </div>
 
@@ -42,38 +45,19 @@
             <p id="class-subtitle" class="muted"></p>
           </div>
           <div class="header-actions">
-            <button class="btn btn-ghost btn-sm" id="edit-class-btn">Edit</button>
+            <button class="btn btn-ghost btn-sm" id="edit-class-btn">Edit class</button>
             <button class="btn btn-ghost btn-sm danger" id="delete-class-btn">Delete</button>
           </div>
         </header>
 
-        <nav class="tabs" id="tabs">
-          <button class="tab active" data-tab="gradebook">Gradebook</button>
-          <button class="tab" data-tab="assignments">Assignments</button>
-          <button class="tab" data-tab="students">Students</button>
-          <button class="tab" data-tab="competencies">Competencies</button>
-        </nav>
-
+        <nav class="subject-nav" id="subject-nav"></nav>
+        <nav class="tabs" id="sub-tabs"></nav>
         <section id="tab-content" class="tab-content"></section>
-      </div>
-
-      <div id="dashboard-view" class="hidden">
-        <header id="dashboard-header">
-          <h1>Class Overview</h1>
-          <p class="muted">Your classes and each student's current grade in every course.</p>
-        </header>
-        <section id="dashboard-content"></section>
       </div>
     </main>
   </div>
 
-  <!-- Modal host -->
   <div id="modal-root"></div>
-
-  <!-- Proficiency scale legend (shared) -->
-  <template id="scale-legend-tpl">
-    <div class="scale-legend"></div>
-  </template>
 
   <script src="calc.js"></script>
   <script src="bc-curriculum.js"></script>

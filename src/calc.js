@@ -147,6 +147,34 @@
   }
 
   /*
+   * A student's standing on a single curricular competency, averaged across
+   * every assignment (in a subject) that assesses it. Excused and ungraded
+   * entries are skipped. Returns null if the competency has no graded work.
+   *
+   * assignments: [{ competencies:[{competencyId,weight}], grades:{sid:{scores,excused}} }]
+   */
+  function competencyStanding(assignments, competencyId, studentId) {
+    if (!assignments) return null;
+    var sum = 0, count = 0;
+    for (var i = 0; i < assignments.length; i++) {
+      var a = assignments[i];
+      var assessesIt = false;
+      for (var j = 0; j < a.competencies.length; j++) {
+        if (a.competencies[j].competencyId === competencyId) { assessesIt = true; break; }
+      }
+      if (!assessesIt) continue;
+      var g = a.grades && a.grades[studentId];
+      if (!g || g.excused) continue;
+      var raw = g.scores ? g.scores[competencyId] : null;
+      var val = toNumber(raw);
+      if (val === null) continue;
+      sum += val; count += 1;
+    }
+    if (count === 0) return null;
+    return sum / count;
+  }
+
+  /*
    * Grid navigation helpers for the gradebook grading cells. Pure functions so
    * they can be unit-tested; the renderer supplies isDisabled(r,c) to skip
    * excused/empty cells.
@@ -177,6 +205,7 @@
 
   var api = {
     PROFICIENCY_LEVELS: PROFICIENCY_LEVELS,
+    competencyStanding: competencyStanding,
     nextEditableRowMajor: nextEditableRowMajor,
     nextEditableInDir: nextEditableInDir,
     MIN_VALUE: MIN_VALUE,

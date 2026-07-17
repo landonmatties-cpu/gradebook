@@ -19,22 +19,28 @@ When entering grades you just **type the number 1–8** — no dropdowns.
 
 ## What it does
 
-- **Fully customizable, no fixed course load.** Add as many classes as you
-  like. Start a class *blank* or from a **core BC subject** (English Language
-  Arts, Mathematics, Science, Social Studies, PHE, ADST, Arts, Career
-  Education, Core French) — which pre-fills that subject's **curricular
-  competencies** and a set of default categories. Everything stays editable.
+- **Classes hold the students; subjects are the courses.** A **class** is a
+  group of students. You add the **subjects** you teach that class — so a
+  **homeroom** is one class with Math, Science, English… inside it, while a
+  single-block class is just one subject. The roster is shared across all of a
+  class's subjects.
+- **Class Summary.** Each class has a **Summary** page: a grid of every student
+  and their current grade in **every subject**, plus a class average per
+  subject. Click a subject to jump straight into it.
+- **Start subjects from the BC curriculum.** Add a subject *blank* or from a
+  **core BC subject** (English Language Arts, Mathematics, Science, Social
+  Studies, PHE, ADST, Arts, Career Education, Core French) — which pre-fills
+  that subject's **curricular competencies** and default categories.
 - **Grade-specific curriculum.** Choose the **grade (6, 7, or 8)** for a class.
-  For Math, Science, and Social Studies the class is additionally pre-filled
-  with that **grade's Content learning standards**, so a Grade 6 class differs
-  from a Grade 7 one. (BC's *curricular competencies* are consistent across
-  6–8, so those are shared; the grade-specific *content* is what changes.)
-- **Multiple sections of the same subject.** e.g. "Math 8 — Block A" and
-  "Math 8 — Block D" are separate classes with their own students and grades.
-- **Easy assignments.** An assignment is just a **title** + the **curricular
-  competencies** it assesses (chosen from a checklist). Give each competency a
-  **weight**, and the overall assignment grade is **generated automatically**
-  as the weighted average.
+  For Math, Science, and Social Studies each subject is additionally pre-filled
+  with that **grade's Content learning standards**, so Grade 6 differs from
+  Grade 7. (BC's *curricular competencies* are consistent across 6–8, so those
+  are shared; the grade-specific *content* is what changes.)
+- **Easy assignments with a grouped picker.** An assignment is just a **title**
+  + the **curricular competencies** it assesses. The picker shows the
+  **groupings first** — open one to reveal and check the competencies inside.
+  Give each a **weight**; the overall assignment grade is generated
+  automatically. You can create an assignment **right from the gradebook**.
 - **One editable gradebook page.** A single grid shows every student, their
   grade on every assignment, and their overall course grade. **Click an
   assignment to expand it inline** into its competency columns and edit the
@@ -44,9 +50,11 @@ When entering grades you just **type the number 1–8** — no dropdowns.
   **Enter** moves to the next box for that student, then on to the next
   student when there are no more competencies to grade. Excused cells are
   skipped automatically.
-- **Class Overview dashboard.** A top-level page listing all your classes with
-  each student's current grade in every course and a class average — click a
-  class to jump straight into it.
+- **See standing by competency.** A **By Competency** report per subject shows
+  each student's average on every curricular competency (across all the
+  assignments that assess it), plus a class average row — so you can spot
+  exactly where students are struggling.
+- **Dark mode.** Toggle light/dark from the sidebar; your choice is remembered.
 - **Sortable gradebook.** Order the assignment columns **by category** or **by
   date created**.
 - **Categories with weights.** Create categories (Quizzes, Projects, Homework,

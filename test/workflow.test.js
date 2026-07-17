@@ -114,5 +114,17 @@ project.grades[ava.id] = { scores: {}, excused: true };
 const avaAfterExcuse = studentOverall(cls, ava.id);
 assert('Ava overall falls back to Quizzes only after excusing project = 5', approx(avaAfterExcuse.value, 5));
 
+// --- 8. standing by curricular competency (across assignments) ---
+// compA appears in both the quiz and the project. Ben: quiz compA=8, project compA=4 -> avg 6
+const benStandingA = calc.competencyStanding(cls.assignments, compA.id, ben.id);
+assert('Ben standing on compA averages across assignments (8+4)/2 = 6', approx(benStandingA, 6));
+// Ava excused from project, quiz compA=6 -> only quiz counts = 6
+const avaStandingA = calc.competencyStanding(cls.assignments, compA.id, ava.id);
+assert('Ava standing on compA skips excused project = 6', approx(avaStandingA, 6));
+// compB only in the quiz; Ben compB=8
+assert('Ben standing on compB = 8', approx(calc.competencyStanding(cls.assignments, compB.id, ben.id), 8));
+// a competency with no graded work -> null
+assert('standing null when no graded work', calc.competencyStanding(cls.assignments, 'nope', ava.id) === null);
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed === 0 ? 0 : 1);
