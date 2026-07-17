@@ -9,6 +9,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { buildWorkbook } = require('./src/xlsx');
 
 const DATA_FILE = () => path.join(app.getPath('userData'), 'gradebook-data.json');
 
@@ -70,6 +71,22 @@ ipcMain.handle('data:export', async (_evt, data) => {
   if (canceled || !filePath) return { ok: false, canceled: true };
   try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    return { ok: true, filePath };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('data:exportXlsx', async (_evt, payload) => {
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    title: 'Export grades to Excel',
+    defaultPath: (payload && payload.defaultName) || 'grades.xlsx',
+    filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }]
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  try {
+    const buf = buildWorkbook((payload && payload.sheets) || []);
+    fs.writeFileSync(filePath, buf);
     return { ok: true, filePath };
   } catch (err) {
     return { ok: false, error: String(err) };

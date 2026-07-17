@@ -55,6 +55,9 @@ When entering grades you just **type the number 1–8** — no dropdowns.
   assignments that assess it), plus a class average row — so you can spot
   exactly where students are struggling.
 - **Dark mode.** Toggle light/dark from the sidebar; your choice is remembered.
+- **Export grades to Excel.** One click writes an `.xlsx` workbook — one sheet
+  per class, each student's overall grade in every subject plus a class-average
+  row. Opens directly in Excel, Numbers, or Google Sheets.
 - **Sortable gradebook.** Order the assignment columns **by category** or **by
   date created**.
 - **Categories with weights.** Create categories (Quizzes, Projects, Homework,
@@ -140,5 +143,6 @@ src/
   renderer.js        All UI logic
   calc.js            Grade & proficiency math (pure, unit-tested)
   bc-curriculum.js   BC subject templates + curricular competencies
+  xlsx.js            Dependency-free Excel (.xlsx) writer
 test/                Node tests (no dependencies)
 ```

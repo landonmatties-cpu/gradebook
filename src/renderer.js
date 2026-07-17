@@ -1021,6 +1021,32 @@
     });
   }
 
+  // ---------------------------------------------------------------- Excel export
+  function gradeCellText(value) {
+    if (value === null || value === undefined) return '';
+    return calc.labelForValue(value) + ' (' + value.toFixed(1) + ')';
+  }
+  // One sheet per class: rows = students, columns = subjects, cells = overall
+  // grade (proficiency label + numeric), plus a class-average row.
+  function buildGradeSheets() {
+    return state.classes.map(function (cls) {
+      var header = ['Student'].concat(cls.subjects.map(function (s) { return s.name; }));
+      var rows = [header];
+      cls.students.forEach(function (stu) {
+        var row = [stu.name];
+        cls.subjects.forEach(function (sub) { row.push(gradeCellText(studentOverall(sub, stu.id).value)); });
+        rows.push(row);
+      });
+      if (cls.subjects.length) {
+        var avg = ['Class average'];
+        cls.subjects.forEach(function (sub) { avg.push(gradeCellText(classAverage(cls, sub))); });
+        rows.push(avg);
+      }
+      var label = (cls.grade ? 'Gr' + cls.grade + ' ' : '') + cls.name;
+      return { name: label, rows: rows };
+    });
+  }
+
   // ---------------------------------------------------------------- chrome
   function wireChrome() {
     $('#add-class-btn').addEventListener('click', function () { openClassModal(null); });
@@ -1042,6 +1068,13 @@
     });
     $('#export-btn').addEventListener('click', function () {
       window.api.exportData({ version: state.version, classes: state.classes, ui: state.ui }).then(function (r) { if (r && r.ok) setStatus('Exported backup'); });
+    });
+    $('#export-xlsx-btn').addEventListener('click', function () {
+      if (!state.classes.length) { setStatus('No classes to export'); return; }
+      window.api.exportXlsx({ defaultName: 'grades.xlsx', sheets: buildGradeSheets() }).then(function (r) {
+        if (r && r.ok) setStatus('Exported grades to Excel');
+        else if (r && r.error) setStatus('Excel export error');
+      });
     });
     $('#import-btn').addEventListener('click', function () {
       confirmModal('Import backup?', 'Importing replaces all current data with the backup file. Continue?', function () {
