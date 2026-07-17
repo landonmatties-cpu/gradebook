@@ -32,6 +32,19 @@ function studentOverall(cls, sid) {
   return calc.overallGrade(cls.categories, assignmentsByCategory(cls), gradesForStudent(cls, sid));
 }
 
+// --- 0. grade-aware curriculum ---
+const mathTpl = CURR.templateById('math');
+const g6 = CURR.competenciesFor(mathTpl, '6');
+const g7 = CURR.competenciesFor(mathTpl, '7');
+assert('grade 6 math includes curricular competencies + content', g6.length > mathTpl.competencies.length);
+assert('grade 6 and grade 7 math content differ',
+  JSON.stringify(g6.map(c => c.name)) !== JSON.stringify(g7.map(c => c.name)));
+assert('grade 6 content is labelled by grade',
+  g6.some(c => c.area === 'Grade 6 Content'));
+const elaTpl = CURR.templateById('ela');
+assert('ELA (no grade content) returns just competencies',
+  CURR.competenciesFor(elaTpl, '6').length === elaTpl.competencies.length);
+
 // --- 1. build a Math class from the BC template ---
 const tpl = CURR.SUBJECT_TEMPLATES.find(t => t.id === 'math');
 assert('math template exists with competencies', tpl && tpl.competencies.length > 0);

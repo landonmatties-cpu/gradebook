@@ -1,21 +1,27 @@
 /*
- * bc-curriculum.js — templates for the core BC middle-school subjects.
+ * bc-curriculum.js — grade-aware templates for the core BC middle-school
+ * subjects (Grades 6, 7, 8).
  *
- * Each template pre-fills a class with the subject's BC curricular
- * competencies so a teacher can start assessing immediately. Everything a
- * template creates is fully editable afterward (add/remove/rename), so this
- * is a convenience, not a constraint.
+ * Each subject provides:
+ *   - competencies:  the BC *Curricular Competencies* (the standards a teacher
+ *                    assesses). In the BC curriculum these are consistent
+ *                    across Grades 6-8 for a given subject, so they are shared.
+ *   - contentByGrade: the grade-specific *Content* learning standards (the
+ *                    topics that actually change from grade to grade). These
+ *                    are what make a Grade 6 class differ from a Grade 7 class.
  *
- * Curricular competencies below are drawn from the BC curriculum (Grades 6-8).
- * They are stable across those grades; grade-specific content/"big ideas" are
- * left to the teacher to add per class.
+ * When a class is created for a subject + grade, it is pre-filled with that
+ * subject's curricular competencies PLUS that grade's content topics, each
+ * grouped by "area". Everything is fully editable afterward — this is a
+ * starting point, and teachers should confirm wording against the current
+ * official BC curriculum (curriculum.gov.bc.ca).
  */
 (function (root) {
   'use strict';
 
-  function comp(name, area) {
-    return { name: name, area: area || '' };
-  }
+  var GRADES = ['6', '7', '8'];
+
+  function comp(name, area) { return { name: name, area: area || '' }; }
 
   var SUBJECT_TEMPLATES = [
     {
@@ -32,6 +38,8 @@
         comp('Use language in creative and playful ways to develop style', 'Create & Communicate'),
         comp('Use conventions of Canadian spelling, grammar, and punctuation', 'Create & Communicate')
       ]
+      // ELA curricular competencies are consistent across Grades 6-8 in the BC
+      // curriculum, so no grade-specific content list is defined here.
     },
     {
       id: 'math',
@@ -39,14 +47,65 @@
       competencies: [
         comp('Use reasoning and logic to explore, analyze, and apply mathematical ideas', 'Reasoning & Analyzing'),
         comp('Estimate reasonably', 'Reasoning & Analyzing'),
+        comp('Demonstrate and apply mental math strategies', 'Reasoning & Analyzing'),
         comp('Develop, demonstrate, and apply mathematical understanding through play, inquiry, and problem solving', 'Understanding & Solving'),
         comp('Visualize to explore mathematical concepts', 'Understanding & Solving'),
-        comp('Apply flexible and strategic approaches to solve problems', 'Understanding & Solving'),
+        comp('Apply multiple strategies to solve problems in abstract and contextualized situations', 'Understanding & Solving'),
         comp('Explain and justify mathematical ideas and decisions', 'Communicating & Representing'),
         comp('Communicate mathematical thinking in many ways', 'Communicating & Representing'),
         comp('Represent mathematical ideas in concrete, pictorial, and symbolic forms', 'Communicating & Representing'),
         comp('Reflect on mathematical thinking and connect concepts to other areas and personal interests', 'Connecting & Reflecting')
-      ]
+      ],
+      contentByGrade: {
+        '6': [
+          'Whole numbers to billions and decimals to thousandths',
+          'Multiplication and division of decimals',
+          'Factors, multiples, greatest common factor, and least common multiple',
+          'Improper fractions and mixed numbers',
+          'Introduction to ratios',
+          'Whole-number percents and percentage discounts',
+          'Order of operations with whole numbers',
+          'One-step equations and preservation of equality',
+          'Perimeter of complex shapes; area of triangles, parallelograms, and trapezoids',
+          'Angle measurement and classification; triangles',
+          'Volume and capacity',
+          'Combinations of transformations',
+          'Line graphs',
+          'Single-outcome probability'
+        ],
+        '7': [
+          'Operations with integers',
+          'Operations and order of operations with decimals',
+          'Addition and subtraction of fractions',
+          'Relationships between decimals, fractions, ratios, and percents',
+          'Discrete linear relations using two variables',
+          'Expressions — writing and evaluating using substitution',
+          'Two-step equations with whole-number coefficients',
+          'Circumference and area of circles',
+          'Volume of rectangular prisms and cylinders',
+          'Cartesian coordinates and graphing',
+          'Combinations of transformations',
+          'Circle graphs',
+          'Experimental probability with two independent events',
+          'Financial literacy — simple budgeting and consumer math'
+        ],
+        '8': [
+          'Perfect squares and cubes; square and cube roots',
+          'Percents less than 1 and greater than 100',
+          'Numerical proportional reasoning (rates, ratio, proportions, percent)',
+          'Operations with fractions (all four operations)',
+          'Discrete linear relations with integers',
+          'Expressions — writing and evaluating using substitution',
+          'Two-variable linear relations — graphing, interpolation, and extrapolation',
+          'Solving linear equations',
+          'The Pythagorean theorem',
+          'Surface area and volume of right prisms and cylinders',
+          'Construction, views, and nets of 3D objects',
+          'Central tendency',
+          'Theoretical probability with two independent events',
+          'Financial literacy — best buys'
+        ]
+      }
     },
     {
       id: 'science',
@@ -61,7 +120,33 @@
         comp('Consider social, ethical, and environmental implications of findings', 'Evaluating'),
         comp('Apply and innovate; contribute to solving problems collaboratively', 'Applying & Innovating'),
         comp('Communicate ideas, findings, and solutions clearly and appropriately', 'Communicating')
-      ]
+      ],
+      contentByGrade: {
+        '6': [
+          'Structures and functions of body systems (digestive, musculoskeletal, respiratory, circulatory)',
+          'Sensing and responding in humans, other animals, and plants',
+          'Heterogeneous and homogeneous mixtures, and separating mixtures',
+          'Newton’s three laws of motion; types of forces',
+          'The solar system and Earth’s place in the Milky Way galaxy',
+          'First Peoples knowledge of astronomy'
+        ],
+        '7': [
+          'Survival needs, adaptations, and natural selection',
+          'Evidence of evolution and the fossil record',
+          'Elements, compounds, atoms, and the periodic table',
+          'Static and current electricity, magnetism, and electromagnetism',
+          'Plate tectonics and the age of the Earth',
+          'Climate change over geological time'
+        ],
+        '8': [
+          'Cell theory and characteristics of living things',
+          'The cell as a system; cellular processes (diffusion and osmosis)',
+          'Kinetic molecular theory and the states of matter',
+          'Atomic theory, models, and the relationship between atoms and molecules',
+          'Properties and behaviour of light and optics (reflection and refraction)',
+          'Relationships of micro-organisms with living things'
+        ]
+      }
     },
     {
       id: 'socials',
@@ -74,7 +159,33 @@
         comp('Determine and analyze cause and consequence of events and developments', 'Cause & Consequence'),
         comp('Explain and infer different perspectives on people, places, and events', 'Perspective'),
         comp('Make reasoned ethical judgments about actions and assess appropriate ways to respond', 'Ethical Judgment')
-      ]
+      ],
+      contentByGrade: {
+        '6': [
+          'Economic policies and resource management, including effects on Indigenous peoples',
+          'Globalization and economic interdependence',
+          'Systems of government and how they compare',
+          'Roles of individuals, governmental, and non-governmental organizations',
+          'Different systems of law; human rights and responses to discrimination',
+          'Regional and international conflict'
+        ],
+        '7': [
+          'Anthropological origins of humans',
+          'Human responses to geographic challenges and opportunities',
+          'Features of civilizations and factors in their rise and fall',
+          'Interactions and exchanges between past civilizations',
+          'Social, political, legal, governmental, and economic systems of ancient civilizations',
+          'Origins, beliefs, and influences of religions and belief systems'
+        ],
+        '8': [
+          'Social, political, and economic systems, including gender and class structures',
+          'Scientific and technological innovations',
+          'Exploration, expansion, and colonization',
+          'Contacts and conflicts between peoples',
+          'Changes in population and living standards',
+          'Philosophical and cultural shifts (Renaissance and Reformation)'
+        ]
+      }
     },
     {
       id: 'phe',
@@ -146,9 +257,29 @@
     { name: 'Tests', weight: 15 }
   ];
 
+  // Build the pre-filled competency list for a subject template at a grade:
+  // the shared curricular competencies plus that grade's content topics.
+  function competenciesFor(tpl, grade) {
+    if (!tpl) return [];
+    var out = tpl.competencies.map(function (c) { return { name: c.name, area: c.area }; });
+    if (tpl.contentByGrade && tpl.contentByGrade[grade]) {
+      tpl.contentByGrade[grade].forEach(function (name) {
+        out.push({ name: name, area: 'Grade ' + grade + ' Content' });
+      });
+    }
+    return out;
+  }
+
+  function templateById(id) {
+    return SUBJECT_TEMPLATES.filter(function (t) { return t.id === id; })[0] || null;
+  }
+
   var api = {
+    GRADES: GRADES,
     SUBJECT_TEMPLATES: SUBJECT_TEMPLATES,
-    DEFAULT_CATEGORIES: DEFAULT_CATEGORIES
+    DEFAULT_CATEGORIES: DEFAULT_CATEGORIES,
+    competenciesFor: competenciesFor,
+    templateById: templateById
   };
 
   if (typeof module !== 'undefined' && module.exports) {

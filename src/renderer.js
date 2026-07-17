@@ -41,8 +41,21 @@
           state.ui.selectedClassId = state.classes[0].id;
         }
       }
+      migrate();
       render();
     });
+  }
+
+  // Backfill fields added in later versions so old data keeps working.
+  function migrate() {
+    var base = Date.now();
+    state.classes.forEach(function (cls) {
+      (cls.assignments || []).forEach(function (a, i) {
+        if (!a.createdAt) a.createdAt = base + i;
+      });
+    });
+    if (!state.ui.gradebookSort) state.ui.gradebookSort = 'category';
+    if (state.ui.gradingAssignmentId === undefined) state.ui.gradingAssignmentId = null;
   }
 
   function saveSoon() {
@@ -114,8 +127,8 @@
       var div = document.createElement('div');
       div.className = 'class-item' + (c.id === state.ui.selectedClassId ? ' active' : '');
       div.innerHTML = '<span class="ci-name">' + esc(c.name) + '</span>' +
-        '<span class="ci-sub">' + esc(c.subject || 'Custom') + ' · ' +
-        c.students.length + ' students</span>';
+        '<span class="ci-sub">' + (c.grade ? 'Gr ' + esc(c.grade) + ' · ' : '') +
+        esc(c.subject || 'Custom') + ' · ' + c.students.length + ' students</span>';
       div.addEventListener('click', function () {
         state.ui.selectedClassId = c.id;
         saveSoon();
@@ -138,7 +151,8 @@
     view.classList.remove('hidden');
 
     $('#class-title').textContent = cls.name;
-    $('#class-subtitle').textContent = (cls.subject || 'Custom subject') + ' · ' +
+    $('#class-subtitle').textContent = (cls.grade ? 'Grade ' + cls.grade + ' · ' : '') +
+      (cls.subject || 'Custom subject') + ' · ' +
       cls.students.length + ' students · ' + cls.assignments.length + ' assignments';
 
     $all('#tabs .tab').forEach(function (t) {
@@ -170,8 +184,35 @@
   }
 
   // ---------------------------------------------------------------- Gradebook tab
+  function startGrading(assignmentId) {
+    state.ui.activeTab = 'gradebook';
+    state.ui.gradingAssignmentId = assignmentId;
+    saveSoon();
+    renderMain();
+  }
+
+  // Assignments in the order the overview should display them.
+  function sortedAssignments(cls) {
+    var sort = state.ui.gradebookSort || 'category';
+    if (sort === 'date') {
+      return cls.assignments.slice().sort(function (a, b) {
+        return (a.createdAt || 0) - (b.createdAt || 0);
+      });
+    }
+    // category order (as listed in categories), then date within a category
+    var order = {};
+    cls.categories.forEach(function (c, i) { order[c.id] = i; });
+    return cls.assignments.slice().sort(function (a, b) {
+      var oa = order[a.categoryId], ob = order[b.categoryId];
+      if (oa === undefined) oa = 999; if (ob === undefined) ob = 999;
+      if (oa !== ob) return oa - ob;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+  }
+
   function renderGradebook(host, cls) {
     if (!cls.students.length || !cls.assignments.length) {
+      state.ui.gradingAssignmentId = null;
       host.innerHTML =
         '<div class="card"><h2>Gradebook</h2>' +
         '<p class="card-sub">' +
@@ -183,61 +224,220 @@
       return;
     }
 
-    var byCat = assignmentsByCategory(cls);
-    var head = '<div class="section-head"><h2>Gradebook</h2>' +
-      '<span class="muted" style="font-size:12px">Click an assignment title to grade the whole class · click a cell to edit one student</span></div>';
+    var grading = state.ui.gradingAssignmentId &&
+      cls.assignments.filter(function (a) { return a.id === state.ui.gradingAssignmentId; })[0];
 
-    // Header rows: category row + assignment row
-    var catCells = '<th class="student-col" rowspan="2">Student</th>';
-    var asgCells = '';
-    cls.categories.forEach(function (cat) {
-      var list = byCat[cat.id] || [];
-      if (!list.length) return;
-      catCells += '<th class="cat-header" colspan="' + list.length + '">' +
-        esc(cat.name) + ' <span class="muted">(' + cat.weight + '%)</span></th>';
-      list.forEach(function (a) {
-        asgCells += '<th class="assignment-head">' +
-          '<span class="ah-title" data-grade-assignment="' + a.id + '">' + esc(a.title) + '</span>' +
-          '<span class="ah-meta">' + a.competencies.length + ' comp' +
-          (a.competencies.length === 1 ? '' : 's') + '</span></th>';
-      });
+    // Control bar: pick an assignment to grade, or choose overview sort.
+    var picker = '<label style="font-size:13px;font-weight:600;margin-right:6px">Grade:</label>' +
+      '<select id="gb-picker" style="width:auto;min-width:260px;display:inline-block">' +
+      '<option value="">— Overview (all assignments) —</option>' +
+      cls.categories.map(function (cat) {
+        var list = cls.assignments.filter(function (a) { return a.categoryId === cat.id; });
+        if (!list.length) return '';
+        return '<optgroup label="' + esc(cat.name) + '">' + list.map(function (a) {
+          var sel = grading && grading.id === a.id ? ' selected' : '';
+          return '<option value="' + a.id + '"' + sel + '>' + esc(a.title) + '</option>';
+        }).join('') + '</optgroup>';
+      }).join('') + '</select>';
+
+    var sortCtl = grading ? '' :
+      '<span style="margin-left:auto"><label style="font-size:13px;font-weight:600;margin-right:6px">Order by:</label>' +
+      '<select id="gb-sort" style="width:auto;display:inline-block">' +
+      '<option value="category"' + (state.ui.gradebookSort === 'category' ? ' selected' : '') + '>Category</option>' +
+      '<option value="date"' + (state.ui.gradebookSort === 'date' ? ' selected' : '') + '>Date created</option>' +
+      '</select></span>';
+
+    var bar = '<div class="section-head" style="gap:12px;align-items:center">' +
+      '<div style="display:flex;align-items:center;gap:8px;flex:1">' + picker + '</div>' + sortCtl + '</div>';
+
+    host.innerHTML = bar + '<div id="gb-body"></div>';
+
+    $('#gb-picker', host).addEventListener('change', function () {
+      state.ui.gradingAssignmentId = this.value || null;
+      saveSoon(); renderMain();
     });
-    catCells += '<th class="overall-col" rowspan="2">Overall</th>';
+    if (!grading) {
+      $('#gb-sort', host).addEventListener('change', function () {
+        state.ui.gradebookSort = this.value; saveSoon(); renderMain();
+      });
+    }
+
+    var body = $('#gb-body', host);
+    if (grading) renderGradingGrid(body, cls, grading);
+    else renderOverviewGrid(body, cls);
+  }
+
+  // -- Overview: read-only grid of every assignment's overall per student --
+  function renderOverviewGrid(host, cls) {
+    var sort = state.ui.gradebookSort || 'category';
+    var list = sortedAssignments(cls);
+
+    var headRows;
+    if (sort === 'category') {
+      var byCat = assignmentsByCategory(cls);
+      var catCells = '<th class="student-col" rowspan="2">Student</th>';
+      var asgCells = '';
+      cls.categories.forEach(function (cat) {
+        var l = byCat[cat.id] || [];
+        l.sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+        if (!l.length) return;
+        catCells += '<th class="cat-header" colspan="' + l.length + '">' +
+          esc(cat.name) + ' <span class="muted">(' + cat.weight + '%)</span></th>';
+        l.forEach(function (a) { asgCells += overviewHeadCell(a); });
+      });
+      catCells += '<th class="overall-col" rowspan="2">Overall</th>';
+      headRows = '<tr>' + catCells + '</tr><tr>' + asgCells + '</tr>';
+    } else {
+      var cells = '<th class="student-col">Student</th>';
+      list.forEach(function (a) { cells += overviewHeadCell(a, true); });
+      cells += '<th class="overall-col">Overall</th>';
+      headRows = '<tr>' + cells + '</tr>';
+    }
 
     var body = '';
     cls.students.forEach(function (stu) {
       var row = '<td class="student-col">' + esc(stu.name) + '</td>';
-      cls.categories.forEach(function (cat) {
-        var list = byCat[cat.id] || [];
-        list.forEach(function (a) {
-          row += gradeCellHTML(a, stu);
-        });
-      });
+      list.forEach(function (a) { row += gradeCellHTML(a, stu); });
       var ov = studentOverall(cls, stu.id);
       row += '<td class="grade-cell overall-col">' + overallPillHTML(ov.value) + '</td>';
       body += '<tr>' + row + '</tr>';
     });
 
-    host.innerHTML = head +
+    host.innerHTML =
+      '<div class="muted" style="font-size:12px;margin-bottom:8px">Click any assignment column to grade it. ' +
+      'Change “Order by” to sort columns by category or by date created.</div>' +
       '<div class="gradebook-wrap"><table class="gradebook">' +
-      '<thead><tr>' + catCells + '</tr><tr>' + asgCells + '</tr></thead>' +
-      '<tbody>' + body + '</tbody></table></div>' +
+      '<thead>' + headRows + '</thead><tbody>' + body + '</tbody></table></div>' +
       '<div class="card" style="margin-top:16px"><div class="card-sub">Grade scale</div>' +
       scaleLegendHTML() + '</div>';
 
-    // wire assignment title clicks (bulk grade)
     $all('[data-grade-assignment]', host).forEach(function (el) {
-      el.addEventListener('click', function () {
-        openGradeAssignmentModal(cls, el.dataset.gradeAssignment);
-      });
+      el.addEventListener('click', function () { startGrading(el.dataset.gradeAssignment); });
     });
-    // wire cell clicks (single edit)
     $all('[data-cell]', host).forEach(function (el) {
-      el.addEventListener('click', function () {
-        var d = el.dataset;
-        openGradeCellModal(cls, d.assignment, d.student);
+      el.addEventListener('click', function () { startGrading(el.dataset.assignment); });
+    });
+  }
+
+  function overviewHeadCell(a, withCat) {
+    return '<th class="assignment-head">' +
+      '<span class="ah-title" data-grade-assignment="' + a.id + '">' + esc(a.title) + '</span>' +
+      '<span class="ah-meta">' + (withCat ? esc(catNameFor(a)) + ' · ' : '') +
+      a.competencies.length + ' comp' + (a.competencies.length === 1 ? '' : 's') + '</span></th>';
+  }
+  function catNameFor(a) {
+    var cls = currentClass();
+    var c = cls.categories.filter(function (x) { return x.id === a.categoryId; })[0];
+    return c ? c.name : '';
+  }
+
+  // -- Grading grid: spreadsheet-style, keyboard-navigable, live-saving --
+  function renderGradingGrid(host, cls, a) {
+    a.grades = a.grades || {};
+    var comps = a.competencies;
+
+    var heads = comps.map(function (ac, ci) {
+      var c = competencyById(cls, ac.competencyId);
+      return '<th title="' + esc(c ? c.name : '') + '">' +
+        esc(truncate(c ? c.name : '(removed)', 22)) +
+        '<div class="ah-meta">weight ' + ac.weight + '</div></th>';
+    }).join('');
+
+    var rows = cls.students.map(function (stu, ri) {
+      var g = a.grades[stu.id] || { scores: {}, excused: false };
+      var cells = comps.map(function (ac, ci) {
+        var v = g.scores ? g.scores[ac.competencyId] : null;
+        return '<td style="text-align:center"><input type="number" min="1" max="8" step="1" ' +
+          'class="num-input grade-input" data-r="' + ri + '" data-c="' + ci + '" ' +
+          'data-student="' + stu.id + '" data-comp="' + ac.competencyId + '" ' +
+          'value="' + (v == null ? '' : v) + '"' + (g.excused ? ' disabled' : '') + ' placeholder="—"></td>';
+      }).join('');
+      return '<tr data-row="' + stu.id + '"><td class="student-col">' + esc(stu.name) + '</td>' +
+        cells +
+        '<td style="text-align:center" class="ga-overall" data-overall="' + stu.id + '"></td>' +
+        '<td style="text-align:center"><input type="checkbox" class="ga-excuse" data-student="' + stu.id + '"' +
+        (g.excused ? ' checked' : '') + '></td></tr>';
+    }).join('');
+
+    host.innerHTML =
+      '<div class="section-head" style="margin-bottom:8px"><div>' +
+      '<h2 style="margin:0">Grading: ' + esc(a.title) + '</h2>' +
+      '<div class="card-sub" style="margin:2px 0 0">Type a number 1–8 in each cell. ' +
+      '<b>Enter</b> or <b>↓</b> moves down · <b>Tab</b> moves across · saves automatically.</div></div>' +
+      '<button class="btn btn-sm" id="gg-done">← Back to overview</button></div>' +
+      '<div class="gradebook-wrap"><table class="gradebook grade-assignment-table">' +
+      '<thead><tr><th class="student-col">Student</th>' + heads +
+      '<th>Overall</th><th>Excuse</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="card" style="margin-top:16px"><div class="card-sub">Grade scale</div>' +
+      scaleLegendHTML() + '</div>';
+
+    var nRows = cls.students.length;
+    var nCols = comps.length;
+
+    function inputAt(r, c) {
+      return host.querySelector('.grade-input[data-r="' + r + '"][data-c="' + c + '"]');
+    }
+    function focusCell(r, c) {
+      if (r < 0 || r >= nRows || c < 0 || c >= nCols) return;
+      var el = inputAt(r, c);
+      // skip disabled (excused) rows in the same direction of travel
+      var guard = 0;
+      while (el && el.disabled && guard < nRows) { r += 1; el = inputAt(r, c); guard++; }
+      if (el && !el.disabled) { el.focus(); el.select(); }
+    }
+    function readScores(sid) {
+      var out = {};
+      $all('.grade-input[data-student="' + sid + '"]', host).forEach(function (inp) {
+        var n = calc.toNumber(inp.value);
+        if (n !== null) out[inp.dataset.comp] = n;
+      });
+      return out;
+    }
+    function persist(sid) {
+      var exc = $('.ga-excuse[data-student="' + sid + '"]', host).checked;
+      var sc = readScores(sid);
+      if (exc) a.grades[sid] = { scores: sc, excused: true };
+      else if (Object.keys(sc).length === 0) delete a.grades[sid];
+      else a.grades[sid] = { scores: sc, excused: false };
+      var cell = $('.ga-overall[data-overall="' + sid + '"]', host);
+      if (exc) cell.innerHTML = '<span class="grade-excused">Excused</span>';
+      else cell.innerHTML = gradePillHTML(calc.assignmentScore(a, sc));
+      saveSoon();
+    }
+
+    $all('.grade-input', host).forEach(function (inp) {
+      inp.addEventListener('focus', function () { inp.select(); });
+      inp.addEventListener('input', function () { persist(inp.dataset.student); });
+      inp.addEventListener('change', function () {
+        // normalize the displayed value to the stored (clamped) one
+        var n = calc.toNumber(inp.value);
+        inp.value = n == null ? '' : n;
+        persist(inp.dataset.student);
+      });
+      inp.addEventListener('keydown', function (e) {
+        var r = Number(inp.dataset.r), c = Number(inp.dataset.c);
+        if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); focusCell(r + 1, c); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(r - 1, c); }
       });
     });
+    $all('.ga-excuse', host).forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var sid = cb.dataset.student;
+        $all('.grade-input[data-student="' + sid + '"]', host).forEach(function (inp) { inp.disabled = cb.checked; });
+        persist(sid);
+      });
+    });
+    // initialize overall cells + focus first editable cell
+    cls.students.forEach(function (stu) {
+      var cell = $('.ga-overall[data-overall="' + stu.id + '"]', host);
+      var g = a.grades[stu.id];
+      if (g && g.excused) cell.innerHTML = '<span class="grade-excused">Excused</span>';
+      else cell.innerHTML = gradePillHTML(calc.assignmentScore(a, g ? g.scores : null));
+    });
+    $('#gg-done', host).addEventListener('click', function () {
+      state.ui.gradingAssignmentId = null; saveSoon(); renderMain();
+    });
+    if (nCols > 0) focusCell(0, 0);
   }
 
   function gradeCellHTML(assignment, student) {
@@ -376,7 +576,7 @@
       b.addEventListener('click', function () { openAssignmentModal(cls, b.dataset.editAsg); });
     });
     $all('[data-grade-asg]', host).forEach(function (b) {
-      b.addEventListener('click', function () { openGradeAssignmentModal(cls, b.dataset.gradeAsg); });
+      b.addEventListener('click', function () { startGrading(b.dataset.gradeAsg); });
     });
     $all('[data-del-asg]', host).forEach(function (b) {
       b.addEventListener('click', function () {
@@ -560,14 +760,26 @@
       '<input type="text" id="cm-name" placeholder="e.g. Math 8 — Block A" value="' +
       esc(isEdit ? existing.name : '') + '"></div>';
 
+    var gradeOptions = CURR.GRADES.map(function (g) {
+      return '<option value="' + g + '">Grade ' + g + '</option>';
+    }).join('');
+
     if (isEdit) {
-      html += '<div class="form-row"><label>Subject label</label>' +
-        '<input type="text" id="cm-subject" value="' + esc(existing.subject || '') + '"></div>';
+      html += '<div class="inline-fields">' +
+        '<div class="form-row"><label>Grade</label><select id="cm-grade">' +
+        '<option value="">—</option>' + gradeOptions + '</select></div>' +
+        '<div class="form-row" style="flex:2"><label>Subject label</label>' +
+        '<input type="text" id="cm-subject" value="' + esc(existing.subject || '') + '"></div></div>';
     } else {
-      html += '<div class="form-row"><label>Start from a BC subject <span class="hint">pre-fills curricular competencies &amp; default categories</span></label>' +
-        '<select id="cm-template"><option value="">Blank (fully custom)</option>' + templateOptions + '</select></div>' +
+      html += '<div class="inline-fields">' +
+        '<div class="form-row"><label>Grade</label><select id="cm-grade">' +
+        '<option value="">—</option>' + gradeOptions + '</select></div>' +
+        '<div class="form-row" style="flex:2"><label>Start from a BC subject ' +
+        '<span class="hint">pre-fills competencies &amp; categories</span></label>' +
+        '<select id="cm-template"><option value="">Blank (fully custom)</option>' + templateOptions + '</select></div></div>' +
         '<div class="form-row"><label>Subject label <span class="hint">optional override</span></label>' +
-        '<input type="text" id="cm-subject" placeholder="auto-filled from subject"></div>';
+        '<input type="text" id="cm-subject" placeholder="auto-filled from subject"></div>' +
+        '<div id="cm-preview" class="live-overall" style="display:none"></div>';
     }
 
     html += '<div class="modal-actions"><button class="btn" id="cm-cancel">Cancel</button>' +
@@ -577,27 +789,44 @@
     var nameInp = $('#cm-name', m.el); nameInp.focus();
     var tplSel = $('#cm-template', m.el);
     var subjInp = $('#cm-subject', m.el);
-    if (tplSel) tplSel.addEventListener('change', function () {
-      var t = CURR.SUBJECT_TEMPLATES.filter(function (x) { return x.id === tplSel.value; })[0];
+    var gradeSel = $('#cm-grade', m.el);
+    var preview = $('#cm-preview', m.el);
+    if (isEdit && existing.grade) gradeSel.value = existing.grade;
+
+    function refreshPreview() {
+      if (!preview || !tplSel) return;
+      var t = CURR.templateById(tplSel.value);
       subjInp.placeholder = t ? t.name : 'auto-filled from subject';
-    });
+      if (!t) { preview.style.display = 'none'; return; }
+      var comps = CURR.competenciesFor(t, gradeSel.value);
+      var contentCount = comps.filter(function (c) { return /Content$/.test(c.area || ''); }).length;
+      preview.style.display = 'block';
+      preview.innerHTML = 'This will add <b>' + comps.length + '</b> competencies' +
+        (gradeSel.value && contentCount ? ' (including <b>' + contentCount + '</b> Grade ' + gradeSel.value + ' content topics)' :
+          (t.contentByGrade ? ' — <span class="muted">pick a grade to include grade-specific content topics</span>' : '')) +
+        ' and ' + CURR.DEFAULT_CATEGORIES.length + ' default categories.';
+    }
+    if (tplSel) { tplSel.addEventListener('change', refreshPreview); gradeSel.addEventListener('change', refreshPreview); }
 
     $('#cm-cancel', m.el).addEventListener('click', m.close);
     $('#cm-save', m.el).addEventListener('click', function () {
       var name = nameInp.value.trim();
       if (!name) { nameInp.focus(); return; }
+      var grade = gradeSel.value;
       if (isEdit) {
         existing.name = name;
         existing.subject = subjInp.value.trim();
+        existing.grade = grade;
       } else {
-        var tpl = tplSel.value ? CURR.SUBJECT_TEMPLATES.filter(function (x) { return x.id === tplSel.value; })[0] : null;
+        var tpl = CURR.templateById(tplSel.value);
         var subject = subjInp.value.trim() || (tpl ? tpl.name : 'Custom');
         var cls = {
           id: uid(),
           name: name,
+          grade: grade,
           subject: subject,
           students: [],
-          competencies: tpl ? tpl.competencies.map(function (c) {
+          competencies: tpl ? CURR.competenciesFor(tpl, grade).map(function (c) {
             return { id: uid(), name: c.name, area: c.area };
           }) : [],
           categories: (tpl ? CURR.DEFAULT_CATEGORIES : []).map(function (c) {
@@ -714,175 +943,12 @@
         });
       } else {
         cls.assignments.push({
-          id: uid(), title: title, categoryId: catId, competencies: comps, grades: {}
+          id: uid(), title: title, categoryId: catId, competencies: comps, grades: {},
+          createdAt: Date.now()
         });
       }
       m.close(); saveSoon(); renderTab();
     });
-  }
-
-  // ---------------------------------------------------------------- Modal: grade one cell
-  function openGradeCellModal(cls, assignmentId, studentId) {
-    var a = cls.assignments.filter(function (x) { return x.id === assignmentId; })[0];
-    var stu = cls.students.filter(function (x) { return x.id === studentId; })[0];
-    if (!a || !stu) return;
-    a.grades = a.grades || {};
-    var g = a.grades[studentId] || { scores: {}, excused: false };
-    var scores = Object.assign({}, g.scores);
-    var excused = !!g.excused;
-
-    var compRows = a.competencies.map(function (ac) {
-      var c = competencyById(cls, ac.competencyId);
-      var val = scores[ac.competencyId];
-      return '<div class="ge-comp">' +
-        '<div class="ge-label">' + esc(c ? c.name : '(removed)') +
-        ' <span class="ge-weight">weight ' + ac.weight + '</span></div>' +
-        '<input type="number" min="1" max="8" step="1" class="num-input gc-score" ' +
-        'data-comp="' + ac.competencyId + '" value="' + (val == null ? '' : val) + '" placeholder="1–8"></div>';
-    }).join('');
-
-    var html = '<h2>' + esc(stu.name) + '</h2>' +
-      '<p class="modal-sub">' + esc(a.title) + ' — type a number 1–8 for each competency.</p>' +
-      '<div class="grade-editor">' + compRows +
-      '<div class="excuse-row"><input type="checkbox" id="gc-excuse"' + (excused ? ' checked' : '') +
-      '><label for="gc-excuse" style="margin:0">Excuse this student from this assignment</label></div>' +
-      '<div class="live-overall" id="gc-live"></div></div>' +
-      '<div class="modal-actions"><button class="btn" id="gc-cancel">Cancel</button>' +
-      '<button class="btn btn-primary" id="gc-save">Save</button></div>' +
-      '<div style="margin-top:14px">' + scaleLegendHTML() + '</div>';
-
-    var m = openModal(html);
-    var first = $('.gc-score', m.el); if (first) { first.focus(); first.select(); }
-    var excuseCb = $('#gc-excuse', m.el);
-
-    function readScores() {
-      var out = {};
-      $all('.gc-score', m.el).forEach(function (inp) {
-        var n = calc.toNumber(inp.value);
-        if (n !== null) out[inp.dataset.comp] = n;
-      });
-      return out;
-    }
-    function updateLive() {
-      var live = $('#gc-live', m.el);
-      if (excuseCb.checked) { live.innerHTML = '<b>Excused</b> — not counted in the average.'; return; }
-      var sc = readScores();
-      var score = calc.assignmentScore(a, sc);
-      if (score === null) { live.innerHTML = 'Overall: <b>—</b> (no grades entered)'; return; }
-      var lvl = calc.levelForValue(score);
-      live.innerHTML = 'Overall: <span class="grade-pill" style="background:' + calc.colorForValue(score) +
-        '">' + lvl.short + '</span> <b>' + esc(lvl.label) + '</b> (' + score.toFixed(2) + ')';
-    }
-    $all('.gc-score', m.el).forEach(function (inp) { inp.addEventListener('input', updateLive); });
-    excuseCb.addEventListener('change', function () {
-      $all('.gc-score', m.el).forEach(function (inp) { inp.disabled = excuseCb.checked; });
-      updateLive();
-    });
-    if (excused) $all('.gc-score', m.el).forEach(function (inp) { inp.disabled = true; });
-    updateLive();
-
-    $('#gc-cancel', m.el).addEventListener('click', m.close);
-    $('#gc-save', m.el).addEventListener('click', function () {
-      if (excuseCb.checked) {
-        a.grades[studentId] = { scores: readScores(), excused: true };
-      } else {
-        var sc = readScores();
-        if (Object.keys(sc).length === 0) delete a.grades[studentId];
-        else a.grades[studentId] = { scores: sc, excused: false };
-      }
-      m.close(); saveSoon(); renderTab();
-    });
-  }
-
-  // ---------------------------------------------------------------- Modal: grade whole class for an assignment
-  function openGradeAssignmentModal(cls, assignmentId) {
-    var a = cls.assignments.filter(function (x) { return x.id === assignmentId; })[0];
-    if (!a) return;
-    if (!cls.students.length) { confirmModalInfo('No students', 'Add students to this class first.'); return; }
-    a.grades = a.grades || {};
-
-    var compHeads = a.competencies.map(function (ac) {
-      var c = competencyById(cls, ac.competencyId);
-      return '<th title="' + esc(c ? c.name : '') + '">' +
-        esc(truncate(c ? c.name : '(removed)', 26)) + '<div class="ah-meta">w' + ac.weight + '</div></th>';
-    }).join('');
-
-    var rows = cls.students.map(function (stu) {
-      var g = a.grades[stu.id] || { scores: {}, excused: false };
-      var cells = a.competencies.map(function (ac) {
-        var v = g.scores ? g.scores[ac.competencyId] : null;
-        return '<td style="text-align:center"><input type="number" min="1" max="8" step="1" ' +
-          'class="num-input ga-score" data-student="' + stu.id + '" data-comp="' + ac.competencyId + '" ' +
-          'value="' + (v == null ? '' : v) + '"' + (g.excused ? ' disabled' : '') + ' placeholder="—"></td>';
-      }).join('');
-      return '<tr data-student-row="' + stu.id + '"><td class="student-col">' + esc(stu.name) + '</td>' +
-        cells +
-        '<td style="text-align:center" class="ga-overall" data-overall="' + stu.id + '"></td>' +
-        '<td style="text-align:center"><input type="checkbox" class="ga-excuse" data-student="' + stu.id + '"' +
-        (g.excused ? ' checked' : '') + '></td></tr>';
-    }).join('');
-
-    var html = '<h2>Grade: ' + esc(a.title) + '</h2>' +
-      '<p class="modal-sub">Type a number 1–8 for each competency. Overall updates live. ' +
-      'Tick "Excuse" to exclude a student from this assignment.</p>' +
-      '<div class="table-wrap"><table class="data grade-assignment-table">' +
-      '<thead><tr><th class="student-col">Student</th>' + compHeads +
-      '<th>Overall</th><th>Excuse</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<div style="margin-top:12px">' + scaleLegendHTML() + '</div>' +
-      '<div class="modal-actions"><button class="btn" id="ga-cancel">Cancel</button>' +
-      '<button class="btn btn-primary" id="ga-save">Save grades</button></div>';
-
-    var m = openModal(html, { wide: true });
-
-    function readStudentScores(sid) {
-      var out = {};
-      $all('.ga-score[data-student="' + sid + '"]', m.el).forEach(function (inp) {
-        var n = calc.toNumber(inp.value);
-        if (n !== null) out[inp.dataset.comp] = n;
-      });
-      return out;
-    }
-    function updateOverall(sid) {
-      var cell = $('.ga-overall[data-overall="' + sid + '"]', m.el);
-      var exc = $('.ga-excuse[data-student="' + sid + '"]', m.el).checked;
-      if (exc) { cell.innerHTML = '<span class="grade-excused">Excused</span>'; return; }
-      var score = calc.assignmentScore(a, readStudentScores(sid));
-      cell.innerHTML = gradePillHTML(score);
-    }
-
-    $all('.ga-score', m.el).forEach(function (inp) {
-      inp.addEventListener('input', function () { updateOverall(inp.dataset.student); });
-    });
-    $all('.ga-excuse', m.el).forEach(function (cb) {
-      cb.addEventListener('change', function () {
-        var sid = cb.dataset.student;
-        $all('.ga-score[data-student="' + sid + '"]', m.el).forEach(function (inp) { inp.disabled = cb.checked; });
-        updateOverall(sid);
-      });
-    });
-    cls.students.forEach(function (stu) { updateOverall(stu.id); });
-
-    $('#ga-cancel', m.el).addEventListener('click', m.close);
-    $('#ga-save', m.el).addEventListener('click', function () {
-      cls.students.forEach(function (stu) {
-        var exc = $('.ga-excuse[data-student="' + stu.id + '"]', m.el).checked;
-        var sc = readStudentScores(stu.id);
-        if (exc) {
-          a.grades[stu.id] = { scores: sc, excused: true };
-        } else if (Object.keys(sc).length === 0) {
-          delete a.grades[stu.id];
-        } else {
-          a.grades[stu.id] = { scores: sc, excused: false };
-        }
-      });
-      m.close(); saveSoon(); renderTab();
-    });
-  }
-
-  function confirmModalInfo(title, msg) {
-    var m = openModal('<h2>' + esc(title) + '</h2><p class="modal-sub">' + esc(msg) + '</p>' +
-      '<div class="modal-actions"><button class="btn btn-primary" id="ok">OK</button></div>');
-    $('#ok', m.el).addEventListener('click', m.close);
   }
 
   function truncate(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }

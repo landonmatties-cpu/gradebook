@@ -24,14 +24,23 @@ When entering grades you just **type the number 1–8** — no dropdowns.
   Arts, Mathematics, Science, Social Studies, PHE, ADST, Arts, Career
   Education, Core French) — which pre-fills that subject's **curricular
   competencies** and a set of default categories. Everything stays editable.
+- **Grade-specific curriculum.** Choose the **grade (6, 7, or 8)** for a class.
+  For Math, Science, and Social Studies the class is additionally pre-filled
+  with that **grade's Content learning standards**, so a Grade 6 class differs
+  from a Grade 7 one. (BC's *curricular competencies* are consistent across
+  6–8, so those are shared; the grade-specific *content* is what changes.)
 - **Multiple sections of the same subject.** e.g. "Math 8 — Block A" and
   "Math 8 — Block D" are separate classes with their own students and grades.
 - **Easy assignments.** An assignment is just a **title** + the **curricular
   competencies** it assesses (chosen from a checklist). Give each competency a
   **weight**, and the overall assignment grade is **generated automatically**
   as the weighted average.
-- **Number-based grade entry.** Type `1`–`8` per competency; the matching
-  proficiency level is shown live.
+- **Spreadsheet-style grade entry.** Pick an assignment and grade the whole
+  class in one editable grid — **type `1`–`8`** in each cell and move with the
+  **keyboard** (Enter/↓ down, Tab across). No pop-up windows; it saves as you
+  type and the overall updates live.
+- **Sortable gradebook.** Order the overview columns **by category** or **by
+  date created**.
 - **Categories with weights.** Create categories (Quizzes, Projects, Homework,
   Tests…) and set each one's weight toward the overall grade.
 - **Excuse individual students** from any assignment — excused work is left
@@ -39,6 +48,11 @@ When entering grades you just **type the number 1–8** — no dropdowns.
 - **Automatic overall grade** per student: weighted across categories, with
   empty/excused work correctly dropped and weights renormalized.
 - **Backups.** Export/import your whole gradebook as a JSON file.
+
+> The pre-filled BC content topics are a convenient starting point — please
+> confirm wording against the current official curriculum at
+> [curriculum.gov.bc.ca](https://curriculum.gov.bc.ca). Every item is editable
+> in the **Competencies** tab.
 
 Your data is saved automatically to `gradebook-data.json` in your OS user-data
 folder (e.g. `%AppData%/BC Gradebook` on Windows,
