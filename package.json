@@ -1,0 +1,38 @@
+{
+  "name": "bc-gradebook",
+  "version": "1.0.0",
+  "description": "A simple, fully customizable standalone gradebook for BC middle-school teachers using the BC proficiency scale.",
+  "main": "main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/calc.test.js && node test/workflow.test.js",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "ca.bc.gradebook",
+    "productName": "BC Gradebook",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.education"
+    }
+  }
+}

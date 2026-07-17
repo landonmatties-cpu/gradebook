@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>BC Gradebook</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">BC</span>
+        <span class="brand-name">Gradebook</span>
+      </div>
+      <button id="add-class-btn" class="btn btn-primary btn-block">+ Add Class</button>
+      <nav id="class-list" class="class-list"></nav>
+      <div class="sidebar-footer">
+        <button id="export-btn" class="btn btn-ghost btn-sm">Export backup</button>
+        <button id="import-btn" class="btn btn-ghost btn-sm">Import backup</button>
+        <div id="save-status" class="save-status"></div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main id="main">
+      <div id="main-empty" class="empty-state">
+        <h1>Welcome to your gradebook</h1>
+        <p>Create your first class to get started. You can add the core BC
+           middle-school subjects with their curricular competencies already
+           filled in, or build a class from scratch.</p>
+        <button class="btn btn-primary" id="empty-add-class">+ Add your first class</button>
+      </div>
+
+      <div id="class-view" class="hidden">
+        <header id="class-header">
+          <div>
+            <h1 id="class-title">Class</h1>
+            <p id="class-subtitle" class="muted"></p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-ghost btn-sm" id="edit-class-btn">Edit</button>
+            <button class="btn btn-ghost btn-sm danger" id="delete-class-btn">Delete</button>
+          </div>
+        </header>
+
+        <nav class="tabs" id="tabs">
+          <button class="tab active" data-tab="gradebook">Gradebook</button>
+          <button class="tab" data-tab="assignments">Assignments</button>
+          <button class="tab" data-tab="students">Students</button>
+          <button class="tab" data-tab="competencies">Competencies</button>
+        </nav>
+
+        <section id="tab-content" class="tab-content"></section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal host -->
+  <div id="modal-root"></div>
+
+  <!-- Proficiency scale legend (shared) -->
+  <template id="scale-legend-tpl">
+    <div class="scale-legend"></div>
+  </template>
+
+  <script src="calc.js"></script>
+  <script src="bc-curriculum.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
