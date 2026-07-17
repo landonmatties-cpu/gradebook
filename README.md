@@ -84,6 +84,10 @@ folder (e.g. `%AppData%/BC Gradebook` on Windows,
 > **New to this?** See **[GETTING_STARTED.md](GETTING_STARTED.md)** for a
 > step-by-step, non-technical walkthrough (installing Node, downloading the
 > files, launching, and building an installer).
+>
+> **Day-to-day use & staying up to date?** See **[RUNNING.md](RUNNING.md)** —
+> double-click launchers plus a one-click **Update** flow for running from
+> source.
 
 You need [Node.js](https://nodejs.org) installed (LTS is fine).
 
