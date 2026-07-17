@@ -146,8 +146,39 @@
     return { value: value, breakdown: breakdown };
   }
 
+  /*
+   * Grid navigation helpers for the gradebook grading cells. Pure functions so
+   * they can be unit-tested; the renderer supplies isDisabled(r,c) to skip
+   * excused/empty cells.
+   */
+  // Row-major "next cell": advances across the student's row, then to the next
+  // student, wrapping around. Used for the Enter key.
+  function nextEditableRowMajor(nRows, nCols, isDisabled, r, c) {
+    var total = nRows * nCols;
+    if (total <= 0) return null;
+    var pos = r * nCols + c;
+    for (var k = 1; k <= total; k++) {
+      var p = (pos + k) % total;
+      var rr = Math.floor(p / nCols), cc = p % nCols;
+      if (!isDisabled(rr, cc)) return { r: rr, c: cc };
+    }
+    return null;
+  }
+  // Directional "next cell": steps by (dr,dc) skipping disabled cells until an
+  // enabled one is found or the grid edge is reached. Used for arrow keys.
+  function nextEditableInDir(nRows, nCols, isDisabled, r, c, dr, dc) {
+    r += dr; c += dc;
+    while (r >= 0 && r < nRows && c >= 0 && c < nCols) {
+      if (!isDisabled(r, c)) return { r: r, c: c };
+      r += dr; c += dc;
+    }
+    return null;
+  }
+
   var api = {
     PROFICIENCY_LEVELS: PROFICIENCY_LEVELS,
+    nextEditableRowMajor: nextEditableRowMajor,
+    nextEditableInDir: nextEditableInDir,
     MIN_VALUE: MIN_VALUE,
     MAX_VALUE: MAX_VALUE,
     levelForValue: levelForValue,

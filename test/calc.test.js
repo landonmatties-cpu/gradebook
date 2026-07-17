@@ -89,5 +89,27 @@ const g3 = { t1: { scores: { c1: 8 } } }; // homework ungraded
 const overall2 = calc.overallGrade(categories, assignmentsByCategory, g3);
 assert('overall drops empty category: = 8', approx(overall2.value, 8));
 
+// --- grid navigation (Enter = row-major; arrows = directional) ---
+const none = () => false;
+// 3 rows x 2 cols, nothing disabled
+let t = calc.nextEditableRowMajor(3, 2, none, 0, 0);
+assert('Enter from (0,0) -> next box for student (0,1)', t.r === 0 && t.c === 1);
+t = calc.nextEditableRowMajor(3, 2, none, 0, 1);
+assert('Enter at end of student row -> next student (1,0)', t.r === 1 && t.c === 0);
+t = calc.nextEditableRowMajor(3, 2, none, 2, 1);
+assert('Enter at last cell wraps to (0,0)', t.r === 0 && t.c === 0);
+// skip a disabled (excused) cell
+const disAt10 = (r, c) => (r === 1 && c === 0);
+t = calc.nextEditableRowMajor(3, 2, disAt10, 0, 1);
+assert('Enter skips excused (1,0) -> (1,1)', t.r === 1 && t.c === 1);
+
+// arrows in all four directions
+assert('ArrowRight (0,0)->(0,1)', calc.nextEditableInDir(3, 2, none, 0, 0, 0, 1).c === 1);
+assert('ArrowLeft (0,1)->(0,0)', calc.nextEditableInDir(3, 2, none, 0, 1, 0, -1).c === 0);
+assert('ArrowDown (0,0)->(1,0)', calc.nextEditableInDir(3, 2, none, 0, 0, 1, 0).r === 1);
+assert('ArrowUp (1,0)->(0,0)', calc.nextEditableInDir(3, 2, none, 1, 0, -1, 0).r === 0);
+assert('ArrowLeft at edge returns null', calc.nextEditableInDir(3, 2, none, 0, 0, 0, -1) === null);
+assert('ArrowDown skips disabled row', calc.nextEditableInDir(3, 2, disAt10, 0, 0, 1, 0).r === 2);
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed === 0 ? 0 : 1);

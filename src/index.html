@@ -14,7 +14,9 @@
         <span class="brand-mark">BC</span>
         <span class="brand-name">Gradebook</span>
       </div>
+      <button id="overview-btn" class="btn btn-ghost btn-block">Class Overview</button>
       <button id="add-class-btn" class="btn btn-primary btn-block">+ Add Class</button>
+      <div class="class-list-label">Classes</div>
       <nav id="class-list" class="class-list"></nav>
       <div class="sidebar-footer">
         <button id="export-btn" class="btn btn-ghost btn-sm">Export backup</button>
@@ -53,6 +55,14 @@
         </nav>
 
         <section id="tab-content" class="tab-content"></section>
+      </div>
+
+      <div id="dashboard-view" class="hidden">
+        <header id="dashboard-header">
+          <h1>Class Overview</h1>
+          <p class="muted">Your classes and each student's current grade in every course.</p>
+        </header>
+        <section id="dashboard-content"></section>
       </div>
     </main>
   </div>

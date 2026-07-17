@@ -69,6 +69,8 @@ html, body {
 }
 .brand-name { font-weight: 600; font-size: 16px; }
 
+.class-list-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 12px 2px 2px; font-weight: 600; }
+#overview-btn.active { background: #e7efff; border-color: #cfe0ff; color: var(--primary); font-weight: 600; }
 .class-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .class-item {
   padding: 9px 11px; border-radius: var(--radius); cursor: pointer;
@@ -206,3 +208,26 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .pill-total { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #eef2fa; border: 1px solid var(--border); }
 .pill-total.bad { background: #fbeceb; border-color: #eec3c1; color: var(--danger); }
 .grade-assignment-table input.num-input { margin: 0 auto; display: block; }
+
+/* Expandable assignment columns in the unified gradebook */
+.assignment-head .ah-toggle { cursor: pointer; user-select: none; }
+.assignment-head .ah-toggle:hover .ah-title { text-decoration: underline; }
+.assignment-head .caret { font-size: 10px; color: var(--muted); }
+th.asg-group { background: #eef2fa; text-align: center; cursor: pointer; }
+th.asg-group:hover { background: #e4ebf8; }
+th.asg-sub { background: #f2f6fc; font-size: 11px; font-weight: 600; text-align: center; min-width: 62px; }
+th.asg-sub.sub-overall, th.asg-sub.sub-excuse { background: #e9eefa; }
+.gradebook td.grade-input-cell { padding: 3px 4px; text-align: center; }
+.gradebook td.grade-input-cell input { width: 54px; text-align: center; margin: 0 auto; }
+.gradebook td.asg-overall-cell { text-align: center; background: #fbfcfe; }
+.gradebook td.excuse-cell { text-align: center; }
+.cat-tag { display: inline-block; font-size: 10px; color: var(--muted); }
+.collapsed-cell { cursor: pointer; }
+.collapsed-cell:hover { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* Dashboard */
+.dash-open { color: var(--primary); cursor: pointer; }
+.dash-open:hover { text-decoration: underline; }
+.dash-avg { font-size: 13px; }
+#dashboard-header { margin-bottom: 18px; }
+#dashboard-header h1 { margin: 0 0 2px; }

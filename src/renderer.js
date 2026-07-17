@@ -13,10 +13,14 @@
   var state = {
     version: 1,
     classes: [],
-    ui: { selectedClassId: null, activeTab: 'gradebook' }
+    ui: {
+      selectedClassId: null, activeTab: 'gradebook', view: 'class',
+      gradebookSort: 'category', expandedAssignments: {}
+    }
   };
 
   var saveTimer = null;
+  var pendingGradeFocus = false; // focus first grade cell after an expand action
 
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -55,7 +59,9 @@
       });
     });
     if (!state.ui.gradebookSort) state.ui.gradebookSort = 'category';
-    if (state.ui.gradingAssignmentId === undefined) state.ui.gradingAssignmentId = null;
+    if (!state.ui.view) state.ui.view = 'class';
+    if (!state.ui.expandedAssignments) state.ui.expandedAssignments = {};
+    delete state.ui.gradingAssignmentId; // replaced by inline expandable columns
   }
 
   function saveSoon() {
@@ -117,6 +123,9 @@
   }
 
   function renderSidebar() {
+    var overviewBtn = $('#overview-btn');
+    overviewBtn.classList.toggle('active', state.ui.view === 'dashboard');
+
     var list = $('#class-list');
     list.innerHTML = '';
     if (!state.classes.length) {
@@ -125,11 +134,13 @@
     }
     state.classes.forEach(function (c) {
       var div = document.createElement('div');
-      div.className = 'class-item' + (c.id === state.ui.selectedClassId ? ' active' : '');
+      var active = state.ui.view === 'class' && c.id === state.ui.selectedClassId;
+      div.className = 'class-item' + (active ? ' active' : '');
       div.innerHTML = '<span class="ci-name">' + esc(c.name) + '</span>' +
         '<span class="ci-sub">' + (c.grade ? 'Gr ' + esc(c.grade) + ' · ' : '') +
         esc(c.subject || 'Custom') + ' · ' + c.students.length + ' students</span>';
       div.addEventListener('click', function () {
+        state.ui.view = 'class';
         state.ui.selectedClassId = c.id;
         saveSoon();
         render();
@@ -139,9 +150,20 @@
   }
 
   function renderMain() {
-    var cls = currentClass();
     var empty = $('#main-empty');
     var view = $('#class-view');
+    var dash = $('#dashboard-view');
+
+    if (state.ui.view === 'dashboard') {
+      empty.classList.add('hidden');
+      view.classList.add('hidden');
+      dash.classList.remove('hidden');
+      renderDashboard();
+      return;
+    }
+    dash.classList.add('hidden');
+
+    var cls = currentClass();
     if (!cls) {
       empty.classList.remove('hidden');
       view.classList.add('hidden');
@@ -184,14 +206,23 @@
   }
 
   // ---------------------------------------------------------------- Gradebook tab
-  function startGrading(assignmentId) {
-    state.ui.activeTab = 'gradebook';
-    state.ui.gradingAssignmentId = assignmentId;
-    saveSoon();
-    renderMain();
+  function assignmentById(cls, id) {
+    return cls.assignments.filter(function (a) { return a.id === id; })[0] || null;
+  }
+  function catNameFor(cls, a) {
+    var c = cls.categories.filter(function (x) { return x.id === a.categoryId; })[0];
+    return c ? c.name : '';
+  }
+  function classAverage(cls) {
+    var sum = 0, n = 0;
+    cls.students.forEach(function (s) {
+      var v = studentOverall(cls, s.id).value;
+      if (v !== null) { sum += v; n++; }
+    });
+    return n ? sum / n : null;
   }
 
-  // Assignments in the order the overview should display them.
+  // Assignments in the order the gradebook should display columns.
   function sortedAssignments(cls) {
     var sort = state.ui.gradebookSort || 'category';
     if (sort === 'date') {
@@ -199,7 +230,6 @@
         return (a.createdAt || 0) - (b.createdAt || 0);
       });
     }
-    // category order (as listed in categories), then date within a category
     var order = {};
     cls.categories.forEach(function (c, i) { order[c.id] = i; });
     return cls.assignments.slice().sort(function (a, b) {
@@ -210,9 +240,17 @@
     });
   }
 
+  // Open an assignment (from the Assignments tab) expanded in the gradebook.
+  function openAssignmentInGradebook(id) {
+    state.ui.expandedAssignments[id] = true;
+    state.ui.activeTab = 'gradebook';
+    pendingGradeFocus = true;
+    saveSoon();
+    renderMain();
+  }
+
   function renderGradebook(host, cls) {
     if (!cls.students.length || !cls.assignments.length) {
-      state.ui.gradingAssignmentId = null;
       host.innerHTML =
         '<div class="card"><h2>Gradebook</h2>' +
         '<p class="card-sub">' +
@@ -224,255 +262,286 @@
       return;
     }
 
-    var grading = state.ui.gradingAssignmentId &&
-      cls.assignments.filter(function (a) { return a.id === state.ui.gradingAssignmentId; })[0];
+    var order = sortedAssignments(cls);
+    var expanded = state.ui.expandedAssignments || {};
 
-    // Control bar: pick an assignment to grade, or choose overview sort.
-    var picker = '<label style="font-size:13px;font-weight:600;margin-right:6px">Grade:</label>' +
-      '<select id="gb-picker" style="width:auto;min-width:260px;display:inline-block">' +
-      '<option value="">— Overview (all assignments) —</option>' +
-      cls.categories.map(function (cat) {
-        var list = cls.assignments.filter(function (a) { return a.categoryId === cat.id; });
-        if (!list.length) return '';
-        return '<optgroup label="' + esc(cat.name) + '">' + list.map(function (a) {
-          var sel = grading && grading.id === a.id ? ' selected' : '';
-          return '<option value="' + a.id + '"' + sel + '>' + esc(a.title) + '</option>';
-        }).join('') + '</optgroup>';
-      }).join('') + '</select>';
-
-    var sortCtl = grading ? '' :
-      '<span style="margin-left:auto"><label style="font-size:13px;font-weight:600;margin-right:6px">Order by:</label>' +
-      '<select id="gb-sort" style="width:auto;display:inline-block">' +
-      '<option value="category"' + (state.ui.gradebookSort === 'category' ? ' selected' : '') + '>Category</option>' +
-      '<option value="date"' + (state.ui.gradebookSort === 'date' ? ' selected' : '') + '>Date created</option>' +
-      '</select></span>';
-
-    var bar = '<div class="section-head" style="gap:12px;align-items:center">' +
-      '<div style="display:flex;align-items:center;gap:8px;flex:1">' + picker + '</div>' + sortCtl + '</div>';
-
-    host.innerHTML = bar + '<div id="gb-body"></div>';
-
-    $('#gb-picker', host).addEventListener('change', function () {
-      state.ui.gradingAssignmentId = this.value || null;
-      saveSoon(); renderMain();
+    // Editable competency columns (only for expanded assignments), left→right.
+    var editCols = [];
+    order.forEach(function (a) {
+      if (expanded[a.id]) a.competencies.forEach(function (ac) {
+        editCols.push({ aid: a.id, cid: ac.competencyId });
+      });
     });
-    if (!grading) {
-      $('#gb-sort', host).addEventListener('change', function () {
-        state.ui.gradebookSort = this.value; saveSoon(); renderMain();
-      });
-    }
+    var editIndex = {};
+    editCols.forEach(function (e, i) { editIndex[e.aid + '|' + e.cid] = i; });
+    var hasSub = editCols.length > 0;
+    var rs = hasSub ? ' rowspan="2"' : '';
 
-    var body = $('#gb-body', host);
-    if (grading) renderGradingGrid(body, cls, grading);
-    else renderOverviewGrid(body, cls);
-  }
+    // ---------- header ----------
+    var row1 = '<th class="student-col"' + rs + '>Student</th>';
+    var row2 = '';
+    order.forEach(function (a) {
+      var meta = state.ui.gradebookSort === 'date'
+        ? new Date(a.createdAt || 0).toLocaleDateString()
+        : catNameFor(cls, a);
+      if (expanded[a.id]) {
+        var span = a.competencies.length + 2; // comps + overall + excuse
+        row1 += '<th class="asg-group" colspan="' + span + '" data-toggle="' + a.id + '">' +
+          '<span class="ah-title">' + esc(a.title) + '</span> <span class="caret">▾ collapse</span>' +
+          '<div class="cat-tag">' + esc(meta) + '</div></th>';
+        a.competencies.forEach(function (ac) {
+          var c = competencyById(cls, ac.competencyId);
+          row2 += '<th class="asg-sub" title="' + esc(c ? c.name : '') + '">' +
+            esc(truncate(c ? c.name : '(removed)', 16)) + '<div class="ah-meta">w' + ac.weight + '</div></th>';
+        });
+        row2 += '<th class="asg-sub sub-overall">Overall</th><th class="asg-sub sub-excuse">Excuse</th>';
+      } else {
+        row1 += '<th class="assignment-head"' + rs + '>' +
+          '<span class="ah-toggle" data-toggle="' + a.id + '"><span class="ah-title">' + esc(a.title) + '</span> ' +
+          '<span class="caret">▸ edit</span></span>' +
+          '<div class="ah-meta">' + a.competencies.length + ' comp' + (a.competencies.length === 1 ? '' : 's') + '</div>' +
+          '<div class="cat-tag">' + esc(meta) + '</div></th>';
+      }
+    });
+    row1 += '<th class="overall-col"' + rs + '>Course<br>Overall</th>';
 
-  // -- Overview: read-only grid of every assignment's overall per student --
-  function renderOverviewGrid(host, cls) {
-    var sort = state.ui.gradebookSort || 'category';
-    var list = sortedAssignments(cls);
-
-    var headRows;
-    if (sort === 'category') {
-      var byCat = assignmentsByCategory(cls);
-      var catCells = '<th class="student-col" rowspan="2">Student</th>';
-      var asgCells = '';
-      cls.categories.forEach(function (cat) {
-        var l = byCat[cat.id] || [];
-        l.sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
-        if (!l.length) return;
-        catCells += '<th class="cat-header" colspan="' + l.length + '">' +
-          esc(cat.name) + ' <span class="muted">(' + cat.weight + '%)</span></th>';
-        l.forEach(function (a) { asgCells += overviewHeadCell(a); });
-      });
-      catCells += '<th class="overall-col" rowspan="2">Overall</th>';
-      headRows = '<tr>' + catCells + '</tr><tr>' + asgCells + '</tr>';
-    } else {
-      var cells = '<th class="student-col">Student</th>';
-      list.forEach(function (a) { cells += overviewHeadCell(a, true); });
-      cells += '<th class="overall-col">Overall</th>';
-      headRows = '<tr>' + cells + '</tr>';
-    }
-
+    // ---------- body ----------
     var body = '';
-    cls.students.forEach(function (stu) {
+    cls.students.forEach(function (stu, ri) {
       var row = '<td class="student-col">' + esc(stu.name) + '</td>';
-      list.forEach(function (a) { row += gradeCellHTML(a, stu); });
-      var ov = studentOverall(cls, stu.id);
-      row += '<td class="grade-cell overall-col">' + overallPillHTML(ov.value) + '</td>';
+      order.forEach(function (a) {
+        var g = (a.grades && a.grades[stu.id]) || { scores: {}, excused: false };
+        if (expanded[a.id]) {
+          a.competencies.forEach(function (ac) {
+            var ci = editIndex[a.id + '|' + ac.competencyId];
+            var v = g.scores ? g.scores[ac.competencyId] : null;
+            row += '<td class="grade-input-cell"><input type="number" min="1" max="8" step="1" ' +
+              'class="num-input grade-input" data-r="' + ri + '" data-c="' + ci + '" ' +
+              'data-assignment="' + a.id + '" data-student="' + stu.id + '" data-comp="' + ac.competencyId + '" ' +
+              'value="' + (v == null ? '' : v) + '"' + (g.excused ? ' disabled' : '') + ' placeholder="—"></td>';
+          });
+          row += '<td class="asg-overall-cell" data-aid="' + a.id + '" data-sid="' + stu.id + '">' +
+            (g.excused ? '<span class="grade-excused">Exc</span>' : gradePillHTML(calc.assignmentScore(a, g.scores))) + '</td>';
+          row += '<td class="excuse-cell"><input type="checkbox" class="ex-toggle" data-assignment="' + a.id +
+            '" data-student="' + stu.id + '"' + (g.excused ? ' checked' : '') + '></td>';
+        } else {
+          var inner = g.excused ? '<span class="grade-excused">Exc</span>' :
+            gradePillHTML(calc.assignmentScore(a, g.scores));
+          row += '<td class="grade-cell collapsed-cell" data-expand="' + a.id + '" title="Click to edit">' + inner + '</td>';
+        }
+      });
+      row += '<td class="grade-cell overall-col course-overall" data-sid="' + stu.id + '">' +
+        overallPillHTML(studentOverall(cls, stu.id).value) + '</td>';
       body += '<tr>' + row + '</tr>';
     });
 
-    host.innerHTML =
-      '<div class="muted" style="font-size:12px;margin-bottom:8px">Click any assignment column to grade it. ' +
-      'Change “Order by” to sort columns by category or by date created.</div>' +
-      '<div class="gradebook-wrap"><table class="gradebook">' +
-      '<thead>' + headRows + '</thead><tbody>' + body + '</tbody></table></div>' +
+    var anyExpanded = order.some(function (a) { return expanded[a.id]; });
+    var bar = '<div class="section-head" style="align-items:center;gap:12px">' +
+      '<div class="muted" style="font-size:12px;flex:1">Click an assignment header (or a cell) to expand it and ' +
+      'edit competency grades inline. <b>Enter</b> → next box for the student, then the next student · ' +
+      '<b>arrow keys</b> move in all directions.</div>' +
+      '<button class="btn btn-sm btn-ghost" id="gb-expand-all">' + (anyExpanded ? 'Collapse all' : 'Expand all') + '</button>' +
+      '<span><label style="font-size:13px;font-weight:600;margin-right:6px">Order by:</label>' +
+      '<select id="gb-sort" style="width:auto;display:inline-block">' +
+      '<option value="category"' + (state.ui.gradebookSort === 'category' ? ' selected' : '') + '>Category</option>' +
+      '<option value="date"' + (state.ui.gradebookSort === 'date' ? ' selected' : '') + '>Date created</option>' +
+      '</select></span></div>';
+
+    host.innerHTML = bar +
+      '<div class="gradebook-wrap"><table class="gradebook"><thead><tr>' + row1 + '</tr>' +
+      (hasSub ? '<tr>' + row2 + '</tr>' : '') + '</thead><tbody>' + body + '</tbody></table></div>' +
       '<div class="card" style="margin-top:16px"><div class="card-sub">Grade scale</div>' +
       scaleLegendHTML() + '</div>';
 
-    $all('[data-grade-assignment]', host).forEach(function (el) {
-      el.addEventListener('click', function () { startGrading(el.dataset.gradeAssignment); });
-    });
-    $all('[data-cell]', host).forEach(function (el) {
-      el.addEventListener('click', function () { startGrading(el.dataset.assignment); });
-    });
-  }
-
-  function overviewHeadCell(a, withCat) {
-    return '<th class="assignment-head">' +
-      '<span class="ah-title" data-grade-assignment="' + a.id + '">' + esc(a.title) + '</span>' +
-      '<span class="ah-meta">' + (withCat ? esc(catNameFor(a)) + ' · ' : '') +
-      a.competencies.length + ' comp' + (a.competencies.length === 1 ? '' : 's') + '</span></th>';
-  }
-  function catNameFor(a) {
-    var cls = currentClass();
-    var c = cls.categories.filter(function (x) { return x.id === a.categoryId; })[0];
-    return c ? c.name : '';
-  }
-
-  // -- Grading grid: spreadsheet-style, keyboard-navigable, live-saving --
-  function renderGradingGrid(host, cls, a) {
-    a.grades = a.grades || {};
-    var comps = a.competencies;
-
-    var heads = comps.map(function (ac, ci) {
-      var c = competencyById(cls, ac.competencyId);
-      return '<th title="' + esc(c ? c.name : '') + '">' +
-        esc(truncate(c ? c.name : '(removed)', 22)) +
-        '<div class="ah-meta">weight ' + ac.weight + '</div></th>';
-    }).join('');
-
-    var rows = cls.students.map(function (stu, ri) {
-      var g = a.grades[stu.id] || { scores: {}, excused: false };
-      var cells = comps.map(function (ac, ci) {
-        var v = g.scores ? g.scores[ac.competencyId] : null;
-        return '<td style="text-align:center"><input type="number" min="1" max="8" step="1" ' +
-          'class="num-input grade-input" data-r="' + ri + '" data-c="' + ci + '" ' +
-          'data-student="' + stu.id + '" data-comp="' + ac.competencyId + '" ' +
-          'value="' + (v == null ? '' : v) + '"' + (g.excused ? ' disabled' : '') + ' placeholder="—"></td>';
-      }).join('');
-      return '<tr data-row="' + stu.id + '"><td class="student-col">' + esc(stu.name) + '</td>' +
-        cells +
-        '<td style="text-align:center" class="ga-overall" data-overall="' + stu.id + '"></td>' +
-        '<td style="text-align:center"><input type="checkbox" class="ga-excuse" data-student="' + stu.id + '"' +
-        (g.excused ? ' checked' : '') + '></td></tr>';
-    }).join('');
-
-    host.innerHTML =
-      '<div class="section-head" style="margin-bottom:8px"><div>' +
-      '<h2 style="margin:0">Grading: ' + esc(a.title) + '</h2>' +
-      '<div class="card-sub" style="margin:2px 0 0">Type a number 1–8 in each cell. ' +
-      '<b>Enter</b> jumps to the next empty cell · <b>↓/↑</b> move down/up · <b>Tab</b> moves across · saves automatically.</div></div>' +
-      '<button class="btn btn-sm" id="gg-done">← Back to overview</button></div>' +
-      '<div class="gradebook-wrap"><table class="gradebook grade-assignment-table">' +
-      '<thead><tr><th class="student-col">Student</th>' + heads +
-      '<th>Overall</th><th>Excuse</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<div class="card" style="margin-top:16px"><div class="card-sub">Grade scale</div>' +
-      scaleLegendHTML() + '</div>';
-
-    var nRows = cls.students.length;
-    var nCols = comps.length;
-
-    function inputAt(r, c) {
-      return host.querySelector('.grade-input[data-r="' + r + '"][data-c="' + c + '"]');
-    }
-    function focusCell(r, c) {
-      if (r < 0 || r >= nRows || c < 0 || c >= nCols) return;
-      var el = inputAt(r, c);
-      // skip disabled (excused) rows in the same direction of travel
-      var guard = 0;
-      while (el && el.disabled && guard < nRows) { r += 1; el = inputAt(r, c); guard++; }
-      if (el && !el.disabled) { el.focus(); el.select(); }
-    }
-    // Column-major order (down a column, then the top of the next column).
-    function orderedInputs() {
-      var arr = [];
-      for (var c = 0; c < nCols; c++) {
-        for (var r = 0; r < nRows; r++) {
-          var el = inputAt(r, c);
-          if (el) arr.push(el);
-        }
+    // Two-row sticky header: offset the sub-header row by the first row's height
+    // so the rows don't overlap when the roster is scrolled vertically.
+    if (hasSub) {
+      var firstRow = host.querySelector('table.gradebook thead tr');
+      if (firstRow) {
+        var h = firstRow.offsetHeight;
+        $all('.asg-sub', host).forEach(function (th) { th.style.top = h + 'px'; });
       }
-      return arr;
     }
-    // Enter jumps to the next still-empty, non-excused cell (wrapping around).
-    function focusNextEmpty(fromEl) {
-      var arr = orderedInputs();
-      var idx = arr.indexOf(fromEl);
-      for (var k = 1; k <= arr.length; k++) {
-        var el = arr[(idx + k) % arr.length];
-        if (!el.disabled && el.value === '') { el.focus(); el.select(); return; }
-      }
-      fromEl.blur(); // nothing left to fill
-    }
-    function readScores(sid) {
-      var out = {};
-      $all('.grade-input[data-student="' + sid + '"]', host).forEach(function (inp) {
-        var n = calc.toNumber(inp.value);
-        if (n !== null) out[inp.dataset.comp] = n;
+
+    // ----- wiring -----
+    $('#gb-sort', host).addEventListener('change', function () {
+      state.ui.gradebookSort = this.value; saveSoon(); renderTab();
+    });
+    $('#gb-expand-all', host).addEventListener('click', function () {
+      order.forEach(function (a) {
+        if (anyExpanded) delete state.ui.expandedAssignments[a.id];
+        else state.ui.expandedAssignments[a.id] = true;
       });
-      return out;
+      if (!anyExpanded) pendingGradeFocus = true;
+      saveSoon(); renderTab();
+    });
+    $all('[data-toggle]', host).forEach(function (el) {
+      el.addEventListener('click', function () {
+        var id = el.dataset.toggle;
+        if (state.ui.expandedAssignments[id]) delete state.ui.expandedAssignments[id];
+        else { state.ui.expandedAssignments[id] = true; pendingGradeFocus = true; }
+        saveSoon(); renderTab();
+      });
+    });
+    $all('[data-expand]', host).forEach(function (el) {
+      el.addEventListener('click', function () {
+        state.ui.expandedAssignments[el.dataset.expand] = true;
+        pendingGradeFocus = true; saveSoon(); renderTab();
+      });
+    });
+
+    // ----- inline editing + keyboard navigation -----
+    var nRows = cls.students.length;
+    var nCols = editCols.length;
+    function inputAt(r, c) { return host.querySelector('.grade-input[data-r="' + r + '"][data-c="' + c + '"]'); }
+    function focusEl(el) { if (el && !el.disabled) { el.focus(); el.select(); return true; } return false; }
+    function disabledAt(r, c) { var el = inputAt(r, c); return !el || el.disabled; }
+    function stepMove(r, c, dr, dc) {
+      var t = calc.nextEditableInDir(nRows, nCols, disabledAt, r, c, dr, dc);
+      if (t) focusEl(inputAt(t.r, t.c));
     }
-    function persist(sid) {
-      var exc = $('.ga-excuse[data-student="' + sid + '"]', host).checked;
-      var sc = readScores(sid);
-      if (exc) a.grades[sid] = { scores: sc, excused: true };
-      else if (Object.keys(sc).length === 0) delete a.grades[sid];
-      else a.grades[sid] = { scores: sc, excused: false };
-      var cell = $('.ga-overall[data-overall="' + sid + '"]', host);
-      if (exc) cell.innerHTML = '<span class="grade-excused">Excused</span>';
-      else cell.innerHTML = gradePillHTML(calc.assignmentScore(a, sc));
+    function enterNext(r, c) {
+      var t = calc.nextEditableRowMajor(nRows, nCols, disabledAt, r, c);
+      if (t) focusEl(inputAt(t.r, t.c));
+    }
+    function updateAsgOverall(a, sid) {
+      var cell = host.querySelector('.asg-overall-cell[data-aid="' + a.id + '"][data-sid="' + sid + '"]');
+      if (!cell) return;
+      var g = a.grades && a.grades[sid];
+      if (g && g.excused) cell.innerHTML = '<span class="grade-excused">Exc</span>';
+      else cell.innerHTML = gradePillHTML(calc.assignmentScore(a, g ? g.scores : null));
+    }
+    function updateCourseOverall(sid) {
+      var cell = host.querySelector('.course-overall[data-sid="' + sid + '"]');
+      if (cell) cell.innerHTML = overallPillHTML(studentOverall(cls, sid).value);
+    }
+    function persist(inp) {
+      var a = assignmentById(cls, inp.dataset.assignment);
+      var sid = inp.dataset.student, cid = inp.dataset.comp;
+      a.grades = a.grades || {};
+      var g = a.grades[sid] || { scores: {}, excused: false };
+      g.scores = g.scores || {};
+      var n = calc.toNumber(inp.value);
+      if (n === null) delete g.scores[cid]; else g.scores[cid] = n;
+      if (!g.excused && Object.keys(g.scores).length === 0) delete a.grades[sid];
+      else a.grades[sid] = g;
+      updateAsgOverall(a, sid);
+      updateCourseOverall(sid);
       saveSoon();
     }
 
     $all('.grade-input', host).forEach(function (inp) {
       inp.addEventListener('focus', function () { inp.select(); });
-      inp.addEventListener('input', function () { persist(inp.dataset.student); });
+      inp.addEventListener('input', function () { persist(inp); });
       inp.addEventListener('change', function () {
-        // normalize the displayed value to the stored (clamped) one
         var n = calc.toNumber(inp.value);
         inp.value = n == null ? '' : n;
-        persist(inp.dataset.student);
+        persist(inp);
       });
       inp.addEventListener('keydown', function (e) {
         var r = Number(inp.dataset.r), c = Number(inp.dataset.c);
-        if (e.key === 'Enter') { e.preventDefault(); focusNextEmpty(inp); }
-        else if (e.key === 'ArrowDown') { e.preventDefault(); focusCell(r + 1, c); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(r - 1, c); }
+        switch (e.key) {
+          case 'Enter': e.preventDefault(); enterNext(r, c); break;
+          case 'ArrowDown': e.preventDefault(); stepMove(r, c, 1, 0); break;
+          case 'ArrowUp': e.preventDefault(); stepMove(r, c, -1, 0); break;
+          case 'ArrowRight': e.preventDefault(); stepMove(r, c, 0, 1); break;
+          case 'ArrowLeft': e.preventDefault(); stepMove(r, c, 0, -1); break;
+        }
       });
     });
-    $all('.ga-excuse', host).forEach(function (cb) {
+    $all('.ex-toggle', host).forEach(function (cb) {
       cb.addEventListener('change', function () {
-        var sid = cb.dataset.student;
-        $all('.grade-input[data-student="' + sid + '"]', host).forEach(function (inp) { inp.disabled = cb.checked; });
-        persist(sid);
+        var a = assignmentById(cls, cb.dataset.assignment), sid = cb.dataset.student;
+        a.grades = a.grades || {};
+        var g = a.grades[sid] || { scores: {}, excused: false };
+        g.excused = cb.checked;
+        if (!g.excused && (!g.scores || Object.keys(g.scores).length === 0)) delete a.grades[sid];
+        else a.grades[sid] = g;
+        $all('.grade-input[data-assignment="' + a.id + '"][data-student="' + sid + '"]', host)
+          .forEach(function (inp) { inp.disabled = cb.checked; });
+        updateAsgOverall(a, sid);
+        updateCourseOverall(sid);
+        saveSoon();
       });
     });
-    // initialize overall cells + focus first editable cell
-    cls.students.forEach(function (stu) {
-      var cell = $('.ga-overall[data-overall="' + stu.id + '"]', host);
-      var g = a.grades[stu.id];
-      if (g && g.excused) cell.innerHTML = '<span class="grade-excused">Excused</span>';
-      else cell.innerHTML = gradePillHTML(calc.assignmentScore(a, g ? g.scores : null));
-    });
-    $('#gg-done', host).addEventListener('click', function () {
-      state.ui.gradingAssignmentId = null; saveSoon(); renderMain();
-    });
-    if (nCols > 0) focusCell(0, 0);
+
+    // focus the first editable cell only right after an expand action
+    if (pendingGradeFocus && nCols > 0) { focusEl(inputAt(0, 0)); }
+    pendingGradeFocus = false;
   }
 
-  function gradeCellHTML(assignment, student) {
-    var g = assignment.grades && assignment.grades[student.id];
-    var inner;
-    if (g && g.excused) {
-      inner = '<span class="grade-excused">Excused</span>';
-    } else {
-      var score = calc.assignmentScore(assignment, g ? g.scores : null);
-      inner = gradePillHTML(score);
+  // ---------------------------------------------------------------- Dashboard
+  function renderDashboard() {
+    var host = $('#dashboard-content');
+    if (!state.classes.length) {
+      host.innerHTML = '<div class="card"><div class="empty-hint">No classes yet. ' +
+        'Click <b>+ Add Class</b> to create your first course.</div></div>';
+      return;
     }
-    return '<td class="grade-cell" data-cell="1" data-assignment="' + assignment.id +
-      '" data-student="' + student.id + '">' + inner + '</td>';
+
+    // Students appearing in more than one class → cross-course matrix.
+    var byName = {};
+    state.classes.forEach(function (cls) {
+      cls.students.forEach(function (s) {
+        var key = s.name.trim().toLowerCase();
+        (byName[key] = byName[key] || { name: s.name, entries: [] }).entries.push({ cls: cls, sid: s.id });
+      });
+    });
+    var multi = Object.keys(byName).map(function (k) { return byName[k]; })
+      .filter(function (x) { return x.entries.length > 1; });
+
+    var matrixCard = '';
+    if (multi.length) {
+      var involved = [], seen = {};
+      multi.forEach(function (x) {
+        x.entries.forEach(function (e) { if (!seen[e.cls.id]) { seen[e.cls.id] = 1; involved.push(e.cls); } });
+      });
+      var heads = involved.map(function (c) {
+        return '<th style="text-align:center">' + esc(c.name) + '</th>';
+      }).join('');
+      var mrows = multi.map(function (x) {
+        var cells = involved.map(function (c) {
+          var entry = x.entries.filter(function (e) { return e.cls.id === c.id; })[0];
+          if (!entry) return '<td style="text-align:center" class="muted">—</td>';
+          return '<td style="text-align:center">' + overallPillHTML(studentOverall(c, entry.sid).value) + '</td>';
+        }).join('');
+        return '<tr><td>' + esc(x.name) + '</td>' + cells + '</tr>';
+      }).join('');
+      matrixCard = '<div class="card"><h2>Students taking multiple courses</h2>' +
+        '<div class="card-sub">Same-named students who appear in more than one class.</div>' +
+        '<div class="table-wrap"><table class="data"><thead><tr><th>Student</th>' + heads +
+        '</tr></thead><tbody>' + mrows + '</tbody></table></div></div>';
+    }
+
+    var cards = state.classes.map(function (cls) {
+      var rows = cls.students.map(function (s) {
+        return '<tr><td>' + esc(s.name) + '</td><td style="text-align:center;width:150px">' +
+          overallPillHTML(studentOverall(cls, s.id).value) + '</td></tr>';
+      }).join('');
+      return '<div class="card"><div class="section-head">' +
+        '<div><h2 class="dash-open" data-open="' + cls.id + '">' + esc(cls.name) + '</h2>' +
+        '<div class="card-sub">' + (cls.grade ? 'Grade ' + esc(cls.grade) + ' · ' : '') +
+        esc(cls.subject || 'Custom') + ' · ' + cls.students.length + ' students · ' +
+        cls.assignments.length + ' assignments</div></div>' +
+        '<div class="dash-avg">Class average: ' + overallPillHTML(classAverage(cls)) + '</div>' +
+        '</div>' +
+        (cls.students.length ?
+          '<div class="table-wrap"><table class="data"><thead><tr><th>Student</th>' +
+          '<th style="text-align:center">Current grade</th></tr></thead><tbody>' + rows + '</tbody></table></div>' :
+          '<div class="empty-hint">No students yet — add them in the class.</div>') +
+        '</div>';
+    }).join('');
+
+    host.innerHTML = matrixCard + cards;
+
+    $all('[data-open]', host).forEach(function (el) {
+      el.addEventListener('click', function () {
+        state.ui.view = 'class';
+        state.ui.selectedClassId = el.dataset.open;
+        state.ui.activeTab = 'gradebook';
+        saveSoon(); render();
+      });
+    });
   }
 
   function gradePillHTML(score) {
@@ -598,7 +667,7 @@
       b.addEventListener('click', function () { openAssignmentModal(cls, b.dataset.editAsg); });
     });
     $all('[data-grade-asg]', host).forEach(function (b) {
-      b.addEventListener('click', function () { startGrading(b.dataset.gradeAsg); });
+      b.addEventListener('click', function () { openAssignmentInGradebook(b.dataset.gradeAsg); });
     });
     $all('[data-del-asg]', host).forEach(function (b) {
       b.addEventListener('click', function () {
@@ -858,6 +927,7 @@
         };
         state.classes.push(cls);
         state.ui.selectedClassId = cls.id;
+        state.ui.view = 'class';
       }
       m.close(); saveSoon(); render();
     });
@@ -977,6 +1047,9 @@
 
   // ---------------------------------------------------------------- top-level wiring
   function wireChrome() {
+    $('#overview-btn').addEventListener('click', function () {
+      state.ui.view = 'dashboard'; saveSoon(); render();
+    });
     $('#add-class-btn').addEventListener('click', function () { openClassModal(null); });
     $('#empty-add-class').addEventListener('click', function () { openClassModal(null); });
     $('#edit-class-btn').addEventListener('click', function () {

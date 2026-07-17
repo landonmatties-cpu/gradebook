@@ -35,12 +35,19 @@ When entering grades you just **type the number 1–8** — no dropdowns.
   competencies** it assesses (chosen from a checklist). Give each competency a
   **weight**, and the overall assignment grade is **generated automatically**
   as the weighted average.
-- **Spreadsheet-style grade entry.** Pick an assignment and grade the whole
-  class in one editable grid — **type `1`–`8`** in each cell and move with the
-  **keyboard**: **Enter jumps to the next empty cell**, ↓/↑ move down/up, Tab
-  moves across. No pop-up windows; it saves as you type and the overall
-  updates live.
-- **Sortable gradebook.** Order the overview columns **by category** or **by
+- **One editable gradebook page.** A single grid shows every student, their
+  grade on every assignment, and their overall course grade. **Click an
+  assignment to expand it inline** into its competency columns and edit the
+  grades right there — no pop-up windows. Type `1`–`8` in a cell and it saves
+  as you type, with the assignment overall and course overall updating live.
+- **Full keyboard navigation.** **Arrow keys move in every direction**;
+  **Enter** moves to the next box for that student, then on to the next
+  student when there are no more competencies to grade. Excused cells are
+  skipped automatically.
+- **Class Overview dashboard.** A top-level page listing all your classes with
+  each student's current grade in every course and a class average — click a
+  class to jump straight into it.
+- **Sortable gradebook.** Order the assignment columns **by category** or **by
   date created**.
 - **Categories with weights.** Create categories (Quizzes, Projects, Homework,
   Tests…) and set each one's weight toward the overall grade.
