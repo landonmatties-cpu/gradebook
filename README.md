@@ -48,6 +48,10 @@ folder (e.g. `%AppData%/BC Gradebook` on Windows,
 
 ## Running it
 
+> **New to this?** See **[GETTING_STARTED.md](GETTING_STARTED.md)** for a
+> step-by-step, non-technical walkthrough (installing Node, downloading the
+> files, launching, and building an installer).
+
 You need [Node.js](https://nodejs.org) installed (LTS is fine).
 
 ```bash
