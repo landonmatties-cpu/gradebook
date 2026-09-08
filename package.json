@@ -7,6 +7,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "web": "node server.js",
     "test": "node test/calc.test.js && node test/workflow.test.js && node test/xlsx.test.js",
     "build": "electron-builder",
     "build:win": "electron-builder --win",

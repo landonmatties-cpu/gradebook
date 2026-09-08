@@ -1,15 +1,25 @@
 # Running & updating BC Gradebook (run-from-source)
 
 You've chosen to **run the app from source**. Because this app has no build
-step, updating is as simple as pulling the latest code and relaunching — no
+step, updating is as simple as getting the latest code and relaunching — no
 reinstalling. This guide sets you up so you barely touch a terminal.
+
+**How it runs:** double-clicking **Start Gradebook** opens the gradebook in your
+normal web browser (Safari, Chrome, etc.) using Node.js. It still runs entirely
+on your own computer — nothing goes online, and your grades are saved locally.
+Running this way needs **no install step** and avoids the macOS "Electron will
+damage your computer" warning entirely, because Node is trusted by macOS.
 
 There are two double-click helpers in this folder:
 
-- **Start Gradebook** — launches the app (`Start Gradebook.command` on Mac,
-  `Start Gradebook.bat` on Windows).
-- **Update Gradebook** — pulls the latest version, then you relaunch
+- **Start Gradebook** — launches the app in your browser (`Start
+  Gradebook.command` on Mac, `Start Gradebook.bat` on Windows).
+- **Update Gradebook** — gets the latest version, then you relaunch
   (`Update Gradebook.command` / `Update Gradebook.bat`).
+
+> A small black **Terminal window** stays open while the app runs — that's
+> normal, it's the engine. Keep it open while you work; closing it quits the
+> app. Your grades live in a separate folder and are safe either way.
 
 ---
 
@@ -35,16 +45,16 @@ no passwords to fuss with.
 > five-minute setup.
 
 ### 3. First launch
-Open the cloned **gradebook** folder and double-click **Start Gradebook**:
+Open the **gradebook** folder and double-click **Start Gradebook**:
 
 - **Windows:** double-click `Start Gradebook.bat`.
-- **Mac:** double-click `Start Gradebook.command`. The first time, macOS may
-  block it — **right-click it → Open → Open**. If it says "permission denied,"
-  open Terminal in the folder once and run:
+- **Mac:** double-click `Start Gradebook.command`. The first time, macOS may ask
+  about opening it — **right-click it → Open → Open**. If it says "permission
+  denied," open Terminal in the folder once and run:
   `chmod +x "Start Gradebook.command" "Update Gradebook.command"`
 
-The first launch installs a few components (a minute or two); after that it
-opens straight away.
+A Terminal window opens and your browser pops up with the gradebook. If the
+browser doesn't open on its own, go to **http://localhost:4173** yourself.
 
 ---
 
@@ -77,18 +87,21 @@ Your grades are **not** affected by updates — see below.
 
 ## Troubleshooting
 
-**Mac: "Electron will damage your computer" and it won't open.**
-This is a false alarm from macOS Gatekeeper — it flags apps downloaded from the
-internet that aren't signed by an Apple-registered developer. The **Start
-Gradebook** launcher now clears that flag automatically, so just double-click it
-again. If it still appears, open Terminal in the app folder (right-click the
-folder in Finder → **New Terminal at Folder**) and run once:
+**Mac: "Electron will damage your computer."**
+You should no longer see this — the **Start Gradebook** launcher now runs the
+app in your browser via Node, which macOS trusts, instead of via Electron. If
+you *do* see it, you're probably launching the old desktop version (Electron)
+rather than double-clicking **Start Gradebook**. Use **Start Gradebook** and
+this warning won't appear.
 
-```bash
-xattr -dr com.apple.quarantine node_modules/electron/dist/Electron.app
-```
+**The browser opens but the page won't load.**
+Make sure the small Terminal window is still open (that's the engine). Then
+visit **http://localhost:4173** manually. If that port looks busy, the Terminal
+window prints the exact address to use — copy it into your browser.
 
-Then double-click **Start Gradebook** again.
+**Prefer the standalone desktop app?** Running `npm start` uses Electron
+instead; on an unsigned Mac that triggers the Gatekeeper warning above and needs
+an admin/IT exception. Browser mode (**Start Gradebook**) avoids all of that.
 
 ---
 
