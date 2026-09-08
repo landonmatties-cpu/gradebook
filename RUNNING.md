@@ -75,6 +75,23 @@ Your grades are **not** affected by updates — see below.
 
 ---
 
+## Troubleshooting
+
+**Mac: "Electron will damage your computer" and it won't open.**
+This is a false alarm from macOS Gatekeeper — it flags apps downloaded from the
+internet that aren't signed by an Apple-registered developer. The **Start
+Gradebook** launcher now clears that flag automatically, so just double-click it
+again. If it still appears, open Terminal in the app folder (right-click the
+folder in Finder → **New Terminal at Folder**) and run once:
+
+```bash
+xattr -dr com.apple.quarantine node_modules/electron/dist/Electron.app
+```
+
+Then double-click **Start Gradebook** again.
+
+---
+
 ## Your data is safe
 
 Grades live in a separate folder, **outside** the app, so updates never touch
