@@ -15,6 +15,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { buildWorkbook } = require('./src/xlsx');
 
@@ -34,9 +35,37 @@ function userDataDir() {
 
 const DATA_DIR = userDataDir();
 const DATA_FILE = path.join(DATA_DIR, 'gradebook-data.json');
+const ATTACH_DIR = path.join(DATA_DIR, 'attachments');
 
 function ensureDataDir() {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) { /* ignore */ }
+}
+function ensureAttachDir() {
+  try { fs.mkdirSync(ATTACH_DIR, { recursive: true }); } catch (_) { /* ignore */ }
+}
+
+// Attachment ids are server-generated hex, so a request can never point the
+// file operations outside the attachments folder.
+function isValidAttachId(id) { return typeof id === 'string' && /^[a-f0-9]{24}$/.test(id); }
+function attachPath(id) { return path.join(ATTACH_DIR, id); }
+function attachMetaPath(id) { return path.join(ATTACH_DIR, id + '.json'); }
+
+function saveAttachment(name, type, dataBase64) {
+  ensureAttachDir();
+  var id = crypto.randomBytes(12).toString('hex');
+  var buf = Buffer.from(dataBase64 || '', 'base64');
+  var meta = { name: String(name || 'file'), type: String(type || 'application/octet-stream'), size: buf.length };
+  fs.writeFileSync(attachPath(id), buf);
+  fs.writeFileSync(attachMetaPath(id), JSON.stringify(meta), 'utf8');
+  return Object.assign({ ok: true, id: id }, meta);
+}
+function readAttachmentMeta(id) {
+  try { return JSON.parse(fs.readFileSync(attachMetaPath(id), 'utf8')); } catch (_) { return null; }
+}
+function deleteAttachment(id) {
+  try { fs.unlinkSync(attachPath(id)); } catch (_) { /* ignore */ }
+  try { fs.unlinkSync(attachMetaPath(id)); } catch (_) { /* ignore */ }
+  return { ok: true };
 }
 
 function readData() {
@@ -127,6 +156,36 @@ const server = http.createServer(async function (req, res) {
         'Content-Disposition': 'attachment; filename="' + name.replace(/"/g, '') + '"'
       });
       return res.end(buf);
+    }
+
+    if (req.method === 'POST' && urlPath === '/api/attachment') {
+      const body = await readBody(req);
+      const payload = body ? JSON.parse(body) : {};
+      return sendJson(res, saveAttachment(payload.name, payload.type, payload.dataBase64));
+    }
+
+    if (urlPath.indexOf('/api/attachment/') === 0) {
+      const id = decodeURIComponent(urlPath.slice('/api/attachment/'.length));
+      if (!isValidAttachId(id)) { res.writeHead(400).end('Bad id'); return; }
+
+      if (req.method === 'DELETE') {
+        return sendJson(res, deleteAttachment(id));
+      }
+      if (req.method === 'GET') {
+        const meta = readAttachmentMeta(id);
+        if (!meta) { res.writeHead(404).end('Not found'); return; }
+        fs.readFile(attachPath(id), function (err, buf) {
+          if (err) { res.writeHead(404).end('Not found'); return; }
+          res.writeHead(200, {
+            'Content-Type': meta.type || 'application/octet-stream',
+            // "inline" lets PDFs/images preview in the browser tab; other
+            // types fall back to a download named with the original filename.
+            'Content-Disposition': 'inline; filename="' + String(meta.name || 'file').replace(/["\r\n]/g, '') + '"'
+          });
+          res.end(buf);
+        });
+        return;
+      }
     }
 
     if (req.method === 'GET') {

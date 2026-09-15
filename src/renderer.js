@@ -87,6 +87,8 @@
         sub.assignments.forEach(function (a, i) {
           if (!a.createdAt) a.createdAt = base + i;
           a.grades = a.grades || {};
+          if (typeof a.notes !== 'string') a.notes = '';
+          if (!Array.isArray(a.attachments)) a.attachments = [];
         });
       });
     });
@@ -284,6 +286,50 @@
   }
   function truncate(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 
+  // ---------------------------------------------------------------- attachments
+  function canAttach() { return !!(window.api && window.api.attachmentSave); }
+  function fmtBytes(n) {
+    if (n == null) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return Math.round(n / 1024) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+  function fileEmoji(type, name) {
+    type = type || ''; name = String(name || '').toLowerCase();
+    if (type.indexOf('pdf') >= 0 || /\.pdf$/.test(name)) return '📄';
+    if (type.indexOf('image') >= 0 || /\.(png|jpe?g|gif|webp|heic|bmp)$/.test(name)) return '🖼';
+    if (type.indexOf('word') >= 0 || /\.(docx?|pages|rtf|odt)$/.test(name)) return '📝';
+    if (type.indexOf('sheet') >= 0 || /\.(xlsx?|csv|numbers|ods)$/.test(name)) return '📊';
+    return '📎';
+  }
+  // Read-only chips that open the file on click.
+  function attachmentChipsHTML(atts) {
+    if (!atts || !atts.length) return '';
+    return '<div class="attach-list">' + atts.map(function (a) {
+      return '<button type="button" class="attach-chip" data-open-att="' + esc(a.id) + '" title="Open ' + esc(a.name) + '">' +
+        '<span class="ac-ico">' + fileEmoji(a.type, a.name) + '</span>' +
+        '<span class="ac-name">' + esc(a.name) + '</span>' +
+        (a.size != null ? '<span class="ac-size">' + fmtBytes(a.size) + '</span>' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+  function wireAttachmentOpens(root) {
+    $all('[data-open-att]', root).forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (window.api && window.api.attachmentOpen) window.api.attachmentOpen(b.dataset.openAtt);
+      });
+    });
+  }
+  function wireStudentLinks(root, cls) {
+    $all('[data-view-stu]', root).forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var stu = cls.students.filter(function (x) { return x.id === b.dataset.viewStu; })[0];
+        if (stu) openStudentDetail(cls, stu);
+      });
+    });
+  }
+
   // ---------------------------------------------------------------- Summary (class → subjects)
   function renderSummary(host, cls) {
     if (!cls.subjects.length) {
@@ -301,7 +347,7 @@
       var cells = cls.subjects.map(function (sub) {
         return '<td style="text-align:center">' + overallPillHTML(studentOverall(sub, stu.id).value) + '</td>';
       }).join('');
-      return '<tr><td class="student-col">' + esc(stu.name) + '</td>' + cells + '</tr>';
+      return '<tr><td class="student-col"><button type="button" class="student-link" data-view-stu="' + stu.id + '">' + esc(stu.name) + '</button></td>' + cells + '</tr>';
     }).join('');
     var avgCells = cls.subjects.map(function (sub) {
       return '<td style="text-align:center">' + overallPillHTML(classAverage(cls, sub)) + '</td>';
@@ -322,13 +368,16 @@
         state.ui.classTab = el.dataset.openSubject; state.ui.subjectTab = 'gradebook'; saveSoon(); renderMain();
       });
     });
+    wireStudentLinks(host, cls);
   }
 
   // ---------------------------------------------------------------- Students (class roster)
   function renderStudents(host, cls) {
     var rows = cls.students.map(function (s, i) {
-      return '<tr><td style="width:40px">' + (i + 1) + '</td><td>' + esc(s.name) + '</td>' +
-        '<td style="width:130px"><div class="row-actions">' +
+      return '<tr><td style="width:40px">' + (i + 1) + '</td>' +
+        '<td><button type="button" class="student-link" data-view-stu="' + s.id + '">' + esc(s.name) + '</button></td>' +
+        '<td style="width:230px"><div class="row-actions">' +
+        '<button class="btn btn-sm" data-view-stu="' + s.id + '">View grades</button>' +
         '<button class="btn btn-sm btn-ghost" data-rename-stu="' + s.id + '">Rename</button>' +
         '<button class="btn btn-sm btn-ghost danger" data-del-stu="' + s.id + '">✕</button>' +
         '</div></td></tr>';
@@ -343,6 +392,7 @@
         '<tbody>' + rows + '</tbody></table></div>' :
         '<div class="empty-hint">No students yet. Add them one per line.</div>') + '</div>';
 
+    wireStudentLinks(host, cls);
     $('#add-students-btn', host).addEventListener('click', function () {
       openTextareaModal('Add students', 'Enter one student name per line:', '', function (text) {
         text.split('\n').map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (name) {
@@ -425,10 +475,12 @@
     order.forEach(function (a) {
       var meta = state.ui.gradebookSort === 'date'
         ? new Date(a.createdAt || 0).toLocaleDateString() : catNameFor(subject, a);
+      var hasInfo = a.notes || (a.attachments && a.attachments.length);
+      var infoBtn = hasInfo ? '<button type="button" class="ah-info" data-info="' + a.id + '" title="Description &amp; attachments">ⓘ</button>' : '';
       if (expanded[a.id]) {
         var span = a.competencies.length + 2;
         row1 += '<th class="asg-group" colspan="' + span + '" data-toggle="' + a.id + '">' +
-          '<span class="ah-title">' + esc(a.title) + '</span> <span class="caret">▾ collapse</span>' +
+          '<span class="ah-title">' + esc(a.title) + '</span> <span class="caret">▾ collapse</span>' + infoBtn +
           '<div class="cat-tag">' + esc(meta) + '</div></th>';
         a.competencies.forEach(function (ac) {
           var c = competencyById(subject, ac.competencyId);
@@ -439,7 +491,7 @@
       } else {
         row1 += '<th class="assignment-head"' + rs + '>' +
           '<span class="ah-toggle" data-toggle="' + a.id + '"><span class="ah-title">' + esc(a.title) + '</span> ' +
-          '<span class="caret">▸ edit</span></span>' +
+          '<span class="caret">▸ edit</span></span>' + infoBtn +
           '<div class="ah-meta">' + a.competencies.length + ' comp' + (a.competencies.length === 1 ? '' : 's') + '</div>' +
           '<div class="cat-tag">' + esc(meta) + '</div></th>';
       }
@@ -448,7 +500,7 @@
 
     var body = '';
     cls.students.forEach(function (stu, ri) {
-      var row = '<td class="student-col">' + esc(stu.name) + '</td>';
+      var row = '<td class="student-col"><span class="student-link" data-view-stu="' + stu.id + '">' + esc(stu.name) + '</span></td>';
       order.forEach(function (a) {
         var g = (a.grades && a.grades[stu.id]) || { scores: {}, excused: false };
         if (expanded[a.id]) {
@@ -496,6 +548,14 @@
       if (firstRow) { var hh = firstRow.offsetHeight; $all('.asg-sub', host).forEach(function (th) { th.style.top = hh + 'px'; }); }
     }
 
+    wireStudentLinks(host, cls);
+    $all('[data-info]', host).forEach(function (b) {
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var a = assignmentById(subject, b.dataset.info);
+        if (a) openAssignmentInfo(subject, a);
+      });
+    });
     $('#gb-add-asg', host).addEventListener('click', function () { openAssignmentModal(cls, subject, null); });
     $('#gb-sort', host).addEventListener('change', function () { state.ui.gradebookSort = this.value; saveSoon(); renderClassContent(cls); });
     $('#gb-expand-all', host).addEventListener('click', function () {
@@ -666,7 +726,8 @@
           var c = competencyById(subject, ac.competencyId);
           return '<span class="tag">' + esc(c ? c.name : '(removed)') + ' · w' + ac.weight + '</span>';
         }).join(' ');
-        return '<tr><td><b>' + esc(a.title) + '</b><div style="margin-top:4px">' + comps + '</div></td>' +
+        var extra = (a.notes ? '<div class="asg-notes">' + esc(a.notes) + '</div>' : '') + attachmentChipsHTML(a.attachments);
+        return '<tr><td><b>' + esc(a.title) + '</b><div style="margin-top:4px">' + comps + '</div>' + extra + '</td>' +
           '<td style="width:170px"><div class="row-actions">' +
           '<button class="btn btn-sm btn-ghost" data-edit-asg="' + a.id + '">Edit</button>' +
           '<button class="btn btn-sm" data-grade-asg="' + a.id + '">Grade</button>' +
@@ -683,6 +744,7 @@
 
     host.innerHTML = catCard + asgCard;
 
+    wireAttachmentOpens(host);
     $('#add-cat-btn', host).addEventListener('click', function () {
       promptText('New category', 'Category name', '', function (name) {
         if (!name) return; subject.categories.push({ id: uid(), name: name, weight: 0 }); saveSoon(); renderClassContent(cls);
@@ -963,11 +1025,64 @@
       (subject.competencies.length ? '<div class="comp-picker">' + pickerHTML + '</div>' :
         '<div class="warn">This subject has no competencies yet — add some in the Competencies tab first.</div>') +
       '<div id="as-warn" class="warn"></div></div>' +
+      '<div class="form-row"><label>Description / instructions <span class="hint">optional</span></label>' +
+      '<textarea id="as-notes" rows="3" placeholder="What this assessment covers, instructions, reminders…">' + esc(existing ? existing.notes : '') + '</textarea></div>' +
+      (canAttach() ?
+        '<div class="form-row"><label>Attachments <span class="hint">rubrics, handouts — PDF, image, doc…</span></label>' +
+        '<div id="as-attach-list" class="attach-list"></div>' +
+        '<div style="margin-top:6px"><button type="button" class="btn btn-sm" id="as-attach-add">+ Attach a file</button>' +
+        '<input type="file" id="as-attach-input" multiple hidden></div>' +
+        '<div id="as-attach-msg" class="hint" style="margin-top:6px"></div></div>' : '') +
       '<div class="modal-actions"><button class="btn" id="as-cancel">Cancel</button>' +
       '<button class="btn btn-primary" id="as-save">' + (existing ? 'Save' : 'Create') + '</button></div>';
 
     var m = openModal(html, { wide: true });
     $('#as-title', m.el).focus();
+
+    // ---- attachments working state (uploads are deferred until Save) ----
+    var working = (existing && existing.attachments ? existing.attachments : []).map(function (a) {
+      return { id: a.id, name: a.name, type: a.type, size: a.size };
+    });
+    var originalIds = working.map(function (a) { return a.id; });
+    var MAX_BYTES = 25 * 1024 * 1024;
+
+    function renderWorkingAttachments() {
+      var list = $('#as-attach-list', m.el);
+      if (!list) return;
+      if (!working.length) { list.innerHTML = '<div class="hint">No files attached yet.</div>'; return; }
+      list.innerHTML = working.map(function (a, i) {
+        return '<div class="attach-chip editable">' +
+          '<span class="ac-ico">' + fileEmoji(a.type, a.name) + '</span>' +
+          '<span class="ac-name">' + esc(a.name) + '</span>' +
+          '<span class="ac-size">' + (a.size != null ? fmtBytes(a.size) : '') + (a.id ? '' : ' · new') + '</span>' +
+          (a.id ? '<button type="button" class="ac-open" data-open-idx="' + i + '" title="Open">↗</button>' : '') +
+          '<button type="button" class="ac-del" data-del-idx="' + i + '" title="Remove">✕</button></div>';
+      }).join('');
+      $all('[data-open-idx]', list).forEach(function (b) {
+        b.addEventListener('click', function () {
+          var a = working[Number(b.dataset.openIdx)];
+          if (a && a.id && window.api.attachmentOpen) window.api.attachmentOpen(a.id);
+        });
+      });
+      $all('[data-del-idx]', list).forEach(function (b) {
+        b.addEventListener('click', function () { working.splice(Number(b.dataset.delIdx), 1); renderWorkingAttachments(); });
+      });
+    }
+
+    if (canAttach()) {
+      renderWorkingAttachments();
+      var fileInput = $('#as-attach-input', m.el);
+      $('#as-attach-add', m.el).addEventListener('click', function () { fileInput.click(); });
+      fileInput.addEventListener('change', function () {
+        var msg = $('#as-attach-msg', m.el); if (msg) msg.textContent = '';
+        Array.prototype.slice.call(fileInput.files).forEach(function (f) {
+          if (f.size > MAX_BYTES) { if (msg) msg.textContent = '"' + f.name + '" is larger than 25 MB and was skipped.'; return; }
+          working.push({ id: null, pendingFile: f, name: f.name, type: f.type, size: f.size });
+        });
+        fileInput.value = '';
+        renderWorkingAttachments();
+      });
+    }
 
     $all('[data-toggle-group]', m.el).forEach(function (head) {
       head.addEventListener('click', function () {
@@ -994,6 +1109,7 @@
 
     $('#as-cancel', m.el).addEventListener('click', m.close);
     $('#as-save', m.el).addEventListener('click', function () {
+      var saveBtn = this;
       var title = $('#as-title', m.el).value.trim();
       var warn = $('#as-warn', m.el);
       if (!title) { warn.textContent = 'Please enter a title.'; return; }
@@ -1007,18 +1123,123 @@
       if (!comps.length) { warn.textContent = 'Select at least one competency.'; return; }
       if (!comps.some(function (c) { return c.weight > 0; })) { warn.textContent = 'At least one competency needs a weight above 0.'; return; }
       var catId = $('#as-cat', m.el).value;
-      if (existing) {
-        existing.title = title; existing.categoryId = catId; existing.competencies = comps;
-        var keep = {}; comps.forEach(function (c) { keep[c.competencyId] = true; });
-        if (existing.grades) Object.keys(existing.grades).forEach(function (sid) {
-          var sc = existing.grades[sid].scores || {};
-          Object.keys(sc).forEach(function (cid) { if (!keep[cid]) delete sc[cid]; });
-        });
-      } else {
-        subject.assignments.push({ id: uid(), title: title, categoryId: catId, competencies: comps, grades: {}, createdAt: Date.now() });
+      var notesEl = $('#as-notes', m.el);
+      var notes = notesEl ? notesEl.value.trim() : (existing ? existing.notes : '');
+
+      function commit(atts) {
+        // Remove files that were dropped from the list (edit mode only).
+        if (canAttach()) {
+          var keepFile = {}; atts.forEach(function (a) { keepFile[a.id] = true; });
+          originalIds.forEach(function (oid) {
+            if (!keepFile[oid] && window.api.attachmentDelete) window.api.attachmentDelete(oid);
+          });
+        }
+        if (existing) {
+          existing.title = title; existing.categoryId = catId; existing.competencies = comps;
+          existing.notes = notes; existing.attachments = atts;
+          var keep = {}; comps.forEach(function (c) { keep[c.competencyId] = true; });
+          if (existing.grades) Object.keys(existing.grades).forEach(function (sid) {
+            var sc = existing.grades[sid].scores || {};
+            Object.keys(sc).forEach(function (cid) { if (!keep[cid]) delete sc[cid]; });
+          });
+        } else {
+          subject.assignments.push({ id: uid(), title: title, categoryId: catId, competencies: comps,
+            notes: notes, attachments: atts, grades: {}, createdAt: Date.now() });
+        }
+        m.close(); saveSoon(); renderClassContent(cls);
       }
-      m.close(); saveSoon(); renderClassContent(cls);
+
+      if (!canAttach()) { commit(existing ? (existing.attachments || []) : []); return; }
+
+      // Upload any pending files (preserving order), then commit.
+      saveBtn.disabled = true;
+      var msg = $('#as-attach-msg', m.el);
+      if (msg && working.some(function (w) { return !w.id; })) msg.textContent = 'Saving attachments…';
+      var seq = working.map(function (w) {
+        if (w.id) return Promise.resolve({ id: w.id, name: w.name, type: w.type, size: w.size });
+        return window.api.attachmentSave(w.pendingFile).then(function (r) {
+          if (!r || !r.ok) throw new Error(r && r.error ? r.error : 'upload failed');
+          return { id: r.id, name: r.name, type: r.type, size: r.size };
+        });
+      });
+      Promise.all(seq).then(function (atts) { commit(atts); }).catch(function (err) {
+        saveBtn.disabled = false;
+        if (msg) msg.textContent = 'Could not save an attachment: ' + String(err.message || err);
+      });
     });
+  }
+
+  // ---------------------------------------------------------------- Modal: assignment info (read-only)
+  function openAssignmentInfo(subject, a) {
+    var comps = a.competencies.map(function (ac) {
+      var c = competencyById(subject, ac.competencyId);
+      return '<span class="tag">' + esc(c ? c.name : '(removed)') + ' · w' + ac.weight + '</span>';
+    }).join(' ');
+    var html = '<h2>' + esc(a.title) + '</h2>' +
+      '<p class="modal-sub">' + esc(catNameFor(subject, a) || 'Uncategorized') + ' · ' +
+      new Date(a.createdAt || 0).toLocaleDateString() + '</p>' +
+      (a.notes ? '<div class="form-row"><label>Description</label><div class="info-notes">' + esc(a.notes) + '</div></div>' : '') +
+      '<div class="form-row"><label>Curricular competencies</label><div>' + (comps || '<span class="hint">None</span>') + '</div></div>' +
+      '<div class="form-row"><label>Attachments</label>' +
+      (a.attachments && a.attachments.length ? attachmentChipsHTML(a.attachments) : '<div class="hint">None</div>') + '</div>' +
+      '<div class="modal-actions"><button class="btn btn-primary" id="ai-close">Close</button></div>';
+    var m = openModal(html);
+    wireAttachmentOpens(m.el);
+    $('#ai-close', m.el).addEventListener('click', m.close);
+  }
+
+  // ---------------------------------------------------------------- Modal: student detail
+  function openStudentDetail(cls, student) {
+    var sid = student.id;
+    var blocks;
+    if (!cls.subjects.length) {
+      blocks = '<div class="empty-hint">No subjects in this class yet.</div>';
+    } else {
+      blocks = cls.subjects.map(function (subject) {
+        var overall = studentOverall(subject, sid).value;
+
+        var groups = competenciesByArea(subject);
+        var compHTML = groups.length ? groups.map(function (g) {
+          var items = g.comps.map(function (c) {
+            var v = calc.competencyStanding(subject.assignments, c.id, sid);
+            return '<div class="sd-comp">' + gradePillHTML(v) + '<span class="sd-comp-name">' + esc(c.name) + '</span></div>';
+          }).join('');
+          return '<div class="sd-area"><div class="sd-area-name">' + esc(g.area) + '</div>' + items + '</div>';
+        }).join('') : '<div class="hint">No competencies yet.</div>';
+
+        var order = sortedAssignments(subject);
+        var asgRows = order.map(function (a) {
+          var g = (a.grades && a.grades[sid]) || { scores: {}, excused: false };
+          var scoreCell = g.excused ? '<span class="grade-excused">Exc</span>' : gradePillHTML(calc.assignmentScore(a, g.scores));
+          var per = a.competencies.map(function (ac) {
+            var c = competencyById(subject, ac.competencyId);
+            var v = g.scores ? g.scores[ac.competencyId] : null;
+            return '<span class="sd-mini">' + gradePillHTML(v == null ? null : v) +
+              '<span class="sd-mini-name">' + esc(truncate(c ? c.name : '(removed)', 26)) + '</span></span>';
+          }).join('');
+          return '<tr><td>' + esc(a.title) + (per ? '<div class="sd-mini-wrap">' + per + '</div>' : '') + '</td>' +
+            '<td class="sd-cat">' + esc(catNameFor(subject, a)) + '</td>' +
+            '<td style="text-align:center">' + scoreCell + '</td></tr>';
+        }).join('');
+        var asgTable = order.length ?
+          '<div class="table-wrap"><table class="data"><thead><tr><th>Assignment</th><th>Category</th>' +
+          '<th style="text-align:center">Grade</th></tr></thead><tbody>' + asgRows + '</tbody></table></div>' :
+          '<div class="hint">No assignments yet.</div>';
+
+        return '<div class="sd-subject"><div class="sd-subject-head"><h3>' + esc(subject.name) + '</h3>' +
+          '<span class="sd-overall">Overall ' + overallPillHTML(overall) + '</span></div>' +
+          '<div class="sd-section-label">Standing by competency</div><div class="sd-areas">' + compHTML + '</div>' +
+          '<div class="sd-section-label">Assignments</div>' + asgTable + '</div>';
+      }).join('');
+    }
+
+    var html = '<div class="sd-head"><h2>' + esc(student.name) + '</h2>' +
+      '<p class="modal-sub">' + esc(cls.name) + (cls.grade ? ' · Grade ' + esc(cls.grade) : '') +
+      ' · ' + cls.subjects.length + ' subject' + (cls.subjects.length === 1 ? '' : 's') + '</p></div>' +
+      '<div class="sd-body">' + blocks + '</div>' +
+      '<div class="modal-actions"><button class="btn btn-primary" id="sd-close">Close</button></div>';
+    var m = openModal(html, { wide: true });
+    $('#sd-close', m.el).addEventListener('click', m.close);
   }
 
   // ---------------------------------------------------------------- Excel export

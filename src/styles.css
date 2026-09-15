@@ -302,3 +302,59 @@ tr.avg-row .student-col { background: var(--surface-3); }
 .comp-group-head .caret { color: var(--muted); width: 12px; }
 .comp-group-body { padding: 4px 0; }
 .comp-group-body .comp-pick-row { padding-left: 24px; }
+
+/* ---- attachments (rubrics, handouts) ---------------------------------- */
+.attach-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.attach-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  max-width: 100%; padding: 6px 10px; font-size: 13px; text-align: left;
+  background: var(--btn-bg); border: 1px solid var(--border);
+  border-radius: 999px; color: var(--text); cursor: pointer;
+}
+.attach-chip:hover { background: var(--btn-bg-hover); }
+.attach-chip .ac-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.attach-chip .ac-size { color: var(--muted); font-size: 11px; }
+.attach-chip.editable { border-radius: 8px; cursor: default; }
+.attach-chip .ac-open, .attach-chip .ac-del {
+  border: none; background: transparent; cursor: pointer; color: var(--muted);
+  font-size: 13px; padding: 2px 4px; border-radius: 6px;
+}
+.attach-chip .ac-open:hover { color: var(--primary); background: var(--active-bg); }
+.attach-chip .ac-del:hover { color: var(--danger); background: var(--active-bg); }
+.asg-notes { margin-top: 6px; font-size: 13px; color: var(--muted); white-space: pre-wrap; }
+.info-notes { white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+
+/* small "ⓘ" details button on a gradebook assignment header */
+.ah-info {
+  border: none; background: transparent; cursor: pointer; color: var(--primary);
+  font-size: 13px; padding: 0 4px; margin-left: 4px; vertical-align: middle;
+}
+.ah-info:hover { text-decoration: underline; }
+
+/* clickable student names */
+.student-link {
+  border: none; background: transparent; padding: 0; cursor: pointer;
+  color: var(--primary); font: inherit; font-weight: 600; text-align: left;
+}
+.student-link:hover { text-decoration: underline; }
+
+/* ---- student detail modal --------------------------------------------- */
+.sd-head { margin-bottom: 10px; }
+.sd-body { display: flex; flex-direction: column; gap: 18px; }
+.sd-subject { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; background: var(--surface-hover); }
+.sd-subject-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.sd-subject-head h3 { margin: 0; font-size: 15px; }
+.sd-overall { font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.sd-section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin: 12px 0 6px; font-weight: 700; }
+.sd-areas { display: flex; flex-wrap: wrap; gap: 12px; }
+.sd-area { flex: 1 1 220px; min-width: 200px; }
+.sd-area-name { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.sd-comp { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+.sd-comp-name { color: var(--text); }
+.sd-mini-wrap { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; }
+.sd-mini { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.sd-mini-name { color: var(--muted); }
+.sd-cat { color: var(--muted); font-size: 13px; white-space: nowrap; }
+
+/* let tall modals (e.g. a student report) scroll */
+.modal { max-height: 88vh; overflow-y: auto; }

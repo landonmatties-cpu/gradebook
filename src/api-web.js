@@ -67,6 +67,37 @@
         .catch(function (err) { return { ok: false, error: String(err) }; });
     },
 
+    // ---- attachments (rubrics, handouts) ----
+    // Upload a browser File; resolves to { ok, id, name, type, size }.
+    attachmentSave: function (file) {
+      return new Promise(function (resolve) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          var result = String(reader.result || '');
+          var comma = result.indexOf(',');
+          var b64 = comma >= 0 ? result.slice(comma + 1) : '';
+          jsonPost('/api/attachment', { name: file.name, type: file.type, dataBase64: b64 })
+            .then(function (r) { return r.json(); })
+            .then(resolve)
+            .catch(function (err) { resolve({ ok: false, error: String(err) }); });
+        };
+        reader.onerror = function () { resolve({ ok: false, error: 'Could not read the file.' }); };
+        reader.readAsDataURL(file);
+      });
+    },
+
+    // Open a saved attachment (PDF/image preview or download) in a new tab.
+    attachmentOpen: function (id) {
+      window.open('/api/attachment/' + encodeURIComponent(id), '_blank');
+      return Promise.resolve({ ok: true });
+    },
+
+    attachmentDelete: function (id) {
+      return fetch('/api/attachment/' + encodeURIComponent(id), { method: 'DELETE' })
+        .then(function (r) { return r.json(); })
+        .catch(function (err) { return { ok: false, error: String(err) }; });
+    },
+
     // Read a backup file the teacher picks, without any native dialog.
     importData: function () {
       return new Promise(function (resolve) {
