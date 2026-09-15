@@ -358,3 +358,24 @@ tr.avg-row .student-col { background: var(--surface-3); }
 
 /* let tall modals (e.g. a student report) scroll */
 .modal { max-height: 88vh; overflow-y: auto; }
+
+/* ---- print-friendly student report ------------------------------------ */
+#print-root { display: none; }
+@media print {
+  body { background: #fff; margin: 0; }
+  #app, #modal-root { display: none !important; }
+  #print-root { display: block !important; }
+  .print-report { padding: 8px 4px; color: #111; }
+  .print-head h1 { margin: 0 0 2px; font-size: 22px; }
+  .print-meta { color: #555; font-size: 13px; margin-bottom: 16px; }
+  .print-report .sd-body { display: block; }
+  .print-report .sd-subject {
+    background: #fff; border: 1px solid #ccc; margin-bottom: 14px; break-inside: avoid;
+  }
+  .print-report .sd-section-label { color: #333; }
+  .print-report table.data { width: 100%; }
+  /* keep the proficiency colours when printing */
+  .print-report .grade-pill, .print-report .grade-excused {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}

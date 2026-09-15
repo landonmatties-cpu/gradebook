@@ -23,5 +23,7 @@ contextBridge.exposeInMainWorld('api', {
     reader.readAsDataURL(file);
   }),
   attachmentOpen: (id) => ipcRenderer.invoke('attachment:open', id),
-  attachmentDelete: (id) => ipcRenderer.invoke('attachment:delete', id)
+  attachmentDelete: (id) => ipcRenderer.invoke('attachment:delete', id),
+  attachmentRead: (id) => ipcRenderer.invoke('attachment:read', id),
+  attachmentImport: (id, name, type, dataBase64) => ipcRenderer.invoke('attachment:import', { id, name, type, dataBase64 })
 });

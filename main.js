@@ -149,6 +149,36 @@ ipcMain.handle('attachment:open', (_evt, id) => {
   }
 });
 
+ipcMain.handle('attachment:read', (_evt, id) => {
+  try {
+    if (!isValidAttachId(id)) return { ok: false, error: 'Bad id' };
+    const buf = fs.readFileSync(path.join(ATTACH_DIR(), id));
+    return { ok: true, dataBase64: buf.toString('base64') };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('attachment:import', (_evt, payload) => {
+  try {
+    const id = payload && payload.id;
+    if (!isValidAttachId(id)) return { ok: false, error: 'Bad id' };
+    const dir = ATTACH_DIR();
+    fs.mkdirSync(dir, { recursive: true });
+    const buf = Buffer.from((payload.dataBase64) || '', 'base64');
+    const meta = {
+      name: String(payload.name || 'file'),
+      type: String(payload.type || 'application/octet-stream'),
+      size: buf.length
+    };
+    fs.writeFileSync(path.join(dir, id), buf);
+    fs.writeFileSync(path.join(dir, id + '.json'), JSON.stringify(meta), 'utf8');
+    return Object.assign({ ok: true, id }, meta);
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
 ipcMain.handle('attachment:delete', (_evt, id) => {
   try {
     if (!isValidAttachId(id)) return { ok: false, error: 'Bad id' };

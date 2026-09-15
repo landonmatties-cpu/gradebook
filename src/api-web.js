@@ -98,6 +98,32 @@
         .catch(function (err) { return { ok: false, error: String(err) }; });
     },
 
+    // Read a stored attachment's bytes as base64 (used when exporting a backup).
+    attachmentRead: function (id) {
+      return fetch('/api/attachment/' + encodeURIComponent(id))
+        .then(function (r) { if (!r.ok) throw new Error('missing'); return r.blob(); })
+        .then(function (blob) {
+          return new Promise(function (resolve) {
+            var reader = new FileReader();
+            reader.onload = function () {
+              var result = String(reader.result || '');
+              var comma = result.indexOf(',');
+              resolve({ ok: true, dataBase64: comma >= 0 ? result.slice(comma + 1) : '' });
+            };
+            reader.onerror = function () { resolve({ ok: false, error: 'read failed' }); };
+            reader.readAsDataURL(blob);
+          });
+        })
+        .catch(function (err) { return { ok: false, error: String(err) }; });
+    },
+
+    // Restore an attachment at a specific id (used when importing a backup).
+    attachmentImport: function (id, name, type, dataBase64) {
+      return jsonPost('/api/attachment-import', { id: id, name: name, type: type, dataBase64: dataBase64 })
+        .then(function (r) { return r.json(); })
+        .catch(function (err) { return { ok: false, error: String(err) }; });
+    },
+
     // Read a backup file the teacher picks, without any native dialog.
     importData: function () {
       return new Promise(function (resolve) {

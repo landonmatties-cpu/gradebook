@@ -59,6 +59,14 @@ function saveAttachment(name, type, dataBase64) {
   fs.writeFileSync(attachMetaPath(id), JSON.stringify(meta), 'utf8');
   return Object.assign({ ok: true, id: id }, meta);
 }
+function writeAttachmentAt(id, name, type, dataBase64) {
+  ensureAttachDir();
+  var buf = Buffer.from(dataBase64 || '', 'base64');
+  var meta = { name: String(name || 'file'), type: String(type || 'application/octet-stream'), size: buf.length };
+  fs.writeFileSync(attachPath(id), buf);
+  fs.writeFileSync(attachMetaPath(id), JSON.stringify(meta), 'utf8');
+  return Object.assign({ ok: true, id: id }, meta);
+}
 function readAttachmentMeta(id) {
   try { return JSON.parse(fs.readFileSync(attachMetaPath(id), 'utf8')); } catch (_) { return null; }
 }
@@ -162,6 +170,14 @@ const server = http.createServer(async function (req, res) {
       const body = await readBody(req);
       const payload = body ? JSON.parse(body) : {};
       return sendJson(res, saveAttachment(payload.name, payload.type, payload.dataBase64));
+    }
+
+    // Restore an attachment at a specific id (used when importing a backup).
+    if (req.method === 'POST' && urlPath === '/api/attachment-import') {
+      const body = await readBody(req);
+      const payload = body ? JSON.parse(body) : {};
+      if (!isValidAttachId(payload.id)) return sendJson(res, { ok: false, error: 'Bad id' });
+      return sendJson(res, writeAttachmentAt(payload.id, payload.name, payload.type, payload.dataBase64));
     }
 
     if (urlPath.indexOf('/api/attachment/') === 0) {

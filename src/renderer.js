@@ -1237,9 +1237,19 @@
       '<p class="modal-sub">' + esc(cls.name) + (cls.grade ? ' · Grade ' + esc(cls.grade) : '') +
       ' · ' + cls.subjects.length + ' subject' + (cls.subjects.length === 1 ? '' : 's') + '</p></div>' +
       '<div class="sd-body">' + blocks + '</div>' +
-      '<div class="modal-actions"><button class="btn btn-primary" id="sd-close">Close</button></div>';
+      '<div class="modal-actions"><button class="btn" id="sd-print">🖨 Print / Save PDF</button>' +
+      '<button class="btn btn-primary" id="sd-close">Close</button></div>';
     var m = openModal(html, { wide: true });
     $('#sd-close', m.el).addEventListener('click', m.close);
+    $('#sd-print', m.el).addEventListener('click', function () {
+      var pr = document.getElementById('print-root');
+      if (!pr) return;
+      var when = new Date().toLocaleDateString();
+      pr.innerHTML = '<div class="print-report"><div class="print-head"><h1>' + esc(student.name) + '</h1>' +
+        '<div class="print-meta">' + esc(cls.name) + (cls.grade ? ' · Grade ' + esc(cls.grade) : '') +
+        ' · ' + esc(when) + '</div></div><div class="sd-body">' + blocks + '</div></div>';
+      window.print();
+    });
   }
 
   // ---------------------------------------------------------------- Excel export
@@ -1268,6 +1278,34 @@
     });
   }
 
+  // ---------------------------------------------------------------- backup (with attachments)
+  function collectAttachments() {
+    var seen = {}, out = [];
+    state.classes.forEach(function (cls) {
+      cls.subjects.forEach(function (sub) {
+        sub.assignments.forEach(function (a) {
+          (a.attachments || []).forEach(function (att) {
+            if (att && att.id && !seen[att.id]) { seen[att.id] = true; out.push(att); }
+          });
+        });
+      });
+    });
+    return out;
+  }
+  // Build a self-contained backup: grades/settings plus every attached file's
+  // bytes (base64), so one file restores everything on another computer.
+  function buildBackup() {
+    var base = { version: state.version, classes: state.classes, ui: state.ui };
+    var atts = collectAttachments();
+    if (!atts.length || !(window.api && window.api.attachmentRead)) return Promise.resolve(base);
+    var store = {};
+    return Promise.all(atts.map(function (att) {
+      return window.api.attachmentRead(att.id).then(function (r) {
+        if (r && r.ok) store[att.id] = { name: att.name, type: att.type, data: r.dataBase64 };
+      });
+    })).then(function () { base.attachments = store; return base; });
+  }
+
   // ---------------------------------------------------------------- chrome
   function wireChrome() {
     $('#add-class-btn').addEventListener('click', function () { openClassModal(null); });
@@ -1288,7 +1326,10 @@
       applyTheme(); saveSoon();
     });
     $('#export-btn').addEventListener('click', function () {
-      window.api.exportData({ version: state.version, classes: state.classes, ui: state.ui }).then(function (r) { if (r && r.ok) setStatus('Exported backup'); });
+      setStatus('Preparing backup…');
+      buildBackup().then(function (backup) {
+        return window.api.exportData(backup);
+      }).then(function (r) { if (r && r.ok) setStatus('Exported backup'); });
     });
     $('#export-xlsx-btn').addEventListener('click', function () {
       if (!state.classes.length) { setStatus('No classes to export'); return; }
@@ -1298,14 +1339,23 @@
       });
     });
     $('#import-btn').addEventListener('click', function () {
-      confirmModal('Import backup?', 'Importing replaces all current data with the backup file. Continue?', function () {
+      confirmModal('Import backup?', 'Importing replaces all current data with the backup file, including its attachments. Continue?', function () {
         window.api.importData().then(function (r) {
-          if (r && r.ok && r.data && r.data.classes) {
-            state.classes = r.data.classes;
+          if (!(r && r.ok && r.data && r.data.classes)) return;
+          var incoming = r.data;
+          var atts = incoming.attachments || {};
+          var ids = Object.keys(atts);
+          var restore = (window.api.attachmentImport && ids.length) ?
+            Promise.all(ids.map(function (id) {
+              return window.api.attachmentImport(id, atts[id].name, atts[id].type, atts[id].data);
+            })) : Promise.resolve();
+          setStatus('Importing…');
+          restore.then(function () {
+            state.classes = incoming.classes;
             state.ui.selectedClassId = state.classes.length ? state.classes[0].id : null;
             state.ui.classTab = null;
             migrate(); saveSoon(); render(); setStatus('Imported backup');
-          }
+          });
         });
       }, { okLabel: 'Choose file…', okClass: 'btn-primary' });
     });
