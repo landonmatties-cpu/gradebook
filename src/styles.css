@@ -150,7 +150,7 @@ table.data th { background: var(--surface-2); font-weight: 600; font-size: 13px;
 table.data tr:hover td { background: var(--surface-hover); }
 
 /* Gradebook grid */
-.gradebook-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.gradebook-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); max-height: calc(100vh - 250px); }
 table.gradebook { border-collapse: collapse; width: 100%; font-size: 13px; }
 table.gradebook th, table.gradebook td { border: 1px solid var(--border); padding: 0; }
 table.gradebook thead th { background: var(--surface-2); padding: 8px 10px; vertical-align: bottom; position: sticky; top: 0; z-index: 2; }
@@ -245,7 +245,12 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .assignment-head .caret { font-size: 10px; color: var(--muted); }
 th.asg-group { background: var(--surface-3); text-align: center; cursor: pointer; }
 th.asg-group:hover { background: var(--surface-2); }
-th.asg-sub { background: var(--surface-3); font-size: 11px; font-weight: 600; text-align: center; min-width: 62px; }
+th.asg-sub { background: var(--surface-3); font-size: 11px; font-weight: 600; text-align: center; min-width: 62px; vertical-align: bottom; }
+/* Expanded competency columns show the full name (wrapped) so it's always clear
+   what is being assessed. */
+th.asg-sub.comp-col { min-width: 108px; max-width: 150px; white-space: normal; padding: 6px 8px; }
+th.asg-sub.comp-col .asg-sub-name { display: block; white-space: normal; line-height: 1.22; font-weight: 700; }
+th.asg-sub.sub-note { min-width: 44px; }
 th.asg-sub.sub-overall, th.asg-sub.sub-excuse { background: var(--surface-3); }
 .gradebook td.grade-input-cell { padding: 3px 4px; text-align: center; }
 .gradebook td.grade-input-cell input { width: 54px; text-align: center; margin: 0 auto; }
@@ -379,3 +384,19 @@ tr.avg-row .student-col { background: var(--surface-3); }
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 }
+
+/* ---- per-grade notes (intangibles) ------------------------------------ */
+.gradebook td.note-cell { text-align: center; }
+.note-btn {
+  border: none; background: transparent; cursor: pointer; font-size: 14px;
+  opacity: .4; filter: grayscale(1); padding: 2px 5px; border-radius: 6px; line-height: 1;
+}
+.note-btn:hover { opacity: 1; background: var(--surface-hover); }
+.note-btn.has-note { opacity: 1; filter: none; }
+.gradebook td.collapsed-cell { position: relative; text-align: center; }
+.collapsed-cell.has-note-dot::after {
+  content: ''; position: absolute; top: 3px; right: 3px;
+  width: 6px; height: 6px; background: var(--primary); border-radius: 50%;
+}
+.sd-note { margin-top: 6px; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+.print-report .sd-note { color: #333; }

@@ -478,16 +478,19 @@
       var hasInfo = a.notes || (a.attachments && a.attachments.length);
       var infoBtn = hasInfo ? '<button type="button" class="ah-info" data-info="' + a.id + '" title="Description &amp; attachments">ⓘ</button>' : '';
       if (expanded[a.id]) {
-        var span = a.competencies.length + 2;
+        var span = a.competencies.length + 3;
         row1 += '<th class="asg-group" colspan="' + span + '" data-toggle="' + a.id + '">' +
           '<span class="ah-title">' + esc(a.title) + '</span> <span class="caret">▾ collapse</span>' + infoBtn +
           '<div class="cat-tag">' + esc(meta) + '</div></th>';
         a.competencies.forEach(function (ac) {
           var c = competencyById(subject, ac.competencyId);
-          row2 += '<th class="asg-sub" title="' + esc(c ? c.name : '') + '">' +
-            esc(truncate(c ? c.name : '(removed)', 16)) + '<div class="ah-meta">w' + ac.weight + '</div></th>';
+          row2 += '<th class="asg-sub comp-col" title="' + esc(c ? c.name : '') + '">' +
+            '<span class="asg-sub-name">' + esc(c ? c.name : '(removed)') + '</span>' +
+            '<div class="ah-meta">weight ' + ac.weight + '</div></th>';
         });
-        row2 += '<th class="asg-sub sub-overall">Overall</th><th class="asg-sub sub-excuse">Excuse</th>';
+        row2 += '<th class="asg-sub sub-overall">Overall</th>' +
+          '<th class="asg-sub sub-excuse">Excuse</th>' +
+          '<th class="asg-sub sub-note">Note</th>';
       } else {
         row1 += '<th class="assignment-head"' + rs + '>' +
           '<span class="ah-toggle" data-toggle="' + a.id + '"><span class="ah-title">' + esc(a.title) + '</span> ' +
@@ -516,9 +519,13 @@
             (g.excused ? '<span class="grade-excused">Exc</span>' : gradePillHTML(calc.assignmentScore(a, g.scores))) + '</td>';
           row += '<td class="excuse-cell"><input type="checkbox" class="ex-toggle" data-assignment="' + a.id +
             '" data-student="' + stu.id + '"' + (g.excused ? ' checked' : '') + '></td>';
+          row += '<td class="note-cell"><button type="button" class="note-btn' + (g.note ? ' has-note' : '') +
+            '" data-note-assignment="' + a.id + '" data-note-student="' + stu.id + '" title="' +
+            (g.note ? esc(g.note) : 'Add a note') + '">📝</button></td>';
         } else {
           var inner = g.excused ? '<span class="grade-excused">Exc</span>' : gradePillHTML(calc.assignmentScore(a, g.scores));
-          row += '<td class="grade-cell collapsed-cell" data-expand="' + a.id + '" title="Click to edit">' + inner + '</td>';
+          row += '<td class="grade-cell collapsed-cell' + (g.note ? ' has-note-dot' : '') + '" data-expand="' + a.id + '" title="' +
+            (g.note ? 'Note: ' + esc(g.note) : 'Click to edit') + '">' + inner + '</td>';
         }
       });
       row += '<td class="grade-cell overall-col course-overall" data-sid="' + stu.id + '">' +
@@ -603,7 +610,7 @@
       g.scores = g.scores || {};
       var n = calc.toNumber(inp.value);
       if (n === null) delete g.scores[cid]; else g.scores[cid] = n;
-      if (!g.excused && Object.keys(g.scores).length === 0) delete a.grades[sid]; else a.grades[sid] = g;
+      if (!g.excused && !g.note && Object.keys(g.scores).length === 0) delete a.grades[sid]; else a.grades[sid] = g;
       updateAsgOverall(a, sid); updateCourseOverall(sid); saveSoon();
     }
     $all('.grade-input', host).forEach(function (inp) {
@@ -627,9 +634,16 @@
         a.grades = a.grades || {};
         var g = a.grades[sid] || { scores: {}, excused: false };
         g.excused = cb.checked;
-        if (!g.excused && (!g.scores || Object.keys(g.scores).length === 0)) delete a.grades[sid]; else a.grades[sid] = g;
+        if (!g.excused && !g.note && (!g.scores || Object.keys(g.scores).length === 0)) delete a.grades[sid]; else a.grades[sid] = g;
         $all('.grade-input[data-assignment="' + a.id + '"][data-student="' + sid + '"]', host).forEach(function (inp) { inp.disabled = cb.checked; });
         updateAsgOverall(a, sid); updateCourseOverall(sid); saveSoon();
+      });
+    });
+    $all('.note-btn', host).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var a = assignmentById(subject, b.dataset.noteAssignment);
+        var stu = cls.students.filter(function (x) { return x.id === b.dataset.noteStudent; })[0];
+        if (a && stu) openGradeNoteModal(cls, subject, a, stu);
       });
     });
     if (pendingGradeFocus && nCols > 0) focusEl(inputAt(0, 0));
@@ -1188,6 +1202,32 @@
     $('#ai-close', m.el).addEventListener('click', m.close);
   }
 
+  // ---------------------------------------------------------------- Modal: per-grade note
+  function openGradeNoteModal(cls, subject, a, stu) {
+    var g = (a.grades && a.grades[stu.id]) || { scores: {}, excused: false };
+    var m = openModal('<h2>Note · ' + esc(stu.name) + '</h2>' +
+      '<p class="modal-sub">' + esc(a.title) + ' — a private observation, not part of the grade ' +
+      '(good for effort, participation, or other intangibles you want to remember).</p>' +
+      '<div class="form-row"><textarea id="gn-input" rows="5" placeholder="e.g. Pushed through a tough week; strong contributions in group work.">' +
+      esc(g.note || '') + '</textarea></div>' +
+      '<div class="modal-actions" style="justify-content:space-between">' +
+      '<button class="btn btn-ghost danger" id="gn-clear"' + (g.note ? '' : ' style="visibility:hidden"') + '>Clear note</button>' +
+      '<span><button class="btn" id="gn-cancel">Cancel</button> ' +
+      '<button class="btn btn-primary" id="gn-save">Save note</button></span></div>');
+    var inp = $('#gn-input', m.el); inp.focus();
+    function apply(note) {
+      a.grades = a.grades || {};
+      var gg = a.grades[stu.id] || { scores: {}, excused: false };
+      gg.note = note;
+      if (!note && !gg.excused && (!gg.scores || Object.keys(gg.scores).length === 0)) delete a.grades[stu.id];
+      else a.grades[stu.id] = gg;
+      m.close(); saveSoon(); renderClassContent(cls);
+    }
+    $('#gn-cancel', m.el).addEventListener('click', m.close);
+    $('#gn-clear', m.el).addEventListener('click', function () { apply(''); });
+    $('#gn-save', m.el).addEventListener('click', function () { apply(inp.value.trim()); });
+  }
+
   // ---------------------------------------------------------------- Modal: student detail
   function openStudentDetail(cls, student) {
     var sid = student.id;
@@ -1217,7 +1257,8 @@
             return '<span class="sd-mini">' + gradePillHTML(v == null ? null : v) +
               '<span class="sd-mini-name">' + esc(truncate(c ? c.name : '(removed)', 26)) + '</span></span>';
           }).join('');
-          return '<tr><td>' + esc(a.title) + (per ? '<div class="sd-mini-wrap">' + per + '</div>' : '') + '</td>' +
+          var noteHTML = g.note ? '<div class="sd-note">📝 ' + esc(g.note) + '</div>' : '';
+          return '<tr><td>' + esc(a.title) + (per ? '<div class="sd-mini-wrap">' + per + '</div>' : '') + noteHTML + '</td>' +
             '<td class="sd-cat">' + esc(catNameFor(subject, a)) + '</td>' +
             '<td style="text-align:center">' + scoreCell + '</td></tr>';
         }).join('');
