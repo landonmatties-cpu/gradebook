@@ -400,3 +400,23 @@ tr.avg-row .student-col { background: var(--surface-3); }
 }
 .sd-note { margin-top: 6px; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
 .print-report .sd-note { color: #333; }
+
+/* ---- progress-over-time sparkline (student overview) ------------------- */
+.spark-wrap { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.spark { width: 100%; height: auto; display: block; }
+.spark-grid { stroke: var(--border); stroke-width: 1; }
+.spark-grid.strong { stroke: var(--border-strong); }
+.spark-line { stroke: var(--primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.spark-dot { stroke: var(--panel); stroke-width: 1.5; }
+.spark-axis { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.spark-empty { padding: 10px 2px; }
+@media print {
+  .spark-wrap { background: #fff; border-color: #ccc; break-inside: avoid; }
+  .spark-line { stroke: #2f6df6; }
+  .spark-dot { stroke: #fff; }
+  .spark-grid { stroke: #ddd; } .spark-grid.strong { stroke: #bbb; }
+  .spark-axis { fill: #555; }
+  .print-report .spark-dot, .print-report .spark-line {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}

@@ -1228,6 +1228,57 @@
     $('#gn-save', m.el).addEventListener('click', function () { apply(inp.value.trim()); });
   }
 
+  // Build a small inline-SVG "progress over time" line chart of a student's
+  // assignment scores (chronological). Dependency-free so it works in the
+  // browser and Electron and prints cleanly. Scale is MIN..MAX (1..8).
+  function buildProgressChart(subject, sid) {
+    var pts = subject.assignments.slice()
+      .sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); })
+      .map(function (a) {
+        var g = a.grades && a.grades[sid];
+        if (!g || g.excused) return null;
+        var v = calc.assignmentScore(a, g.scores);
+        if (v == null) return null;
+        return { v: v, title: a.title, date: a.createdAt || 0 };
+      }).filter(Boolean);
+
+    if (pts.length < 2) {
+      return '<div class="spark-empty hint">' + (pts.length
+        ? 'Only one graded assessment so far — a trend line appears once there are two or more.'
+        : 'No graded assessments yet to chart.') + '</div>';
+    }
+
+    var VW = 560, VH = 170, x0 = 34, x1 = 548, y0 = 12, y1 = 146;
+    var MINV = calc.MIN_VALUE, MAXV = calc.MAX_VALUE;
+    function xFor(i) { return x0 + (i / (pts.length - 1)) * (x1 - x0); }
+    function yFor(v) { return y1 - ((v - MINV) / (MAXV - MINV)) * (y1 - y0); }
+    function dstr(t) { var d = new Date(t); return isFinite(d.getTime()) ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''; }
+
+    var grid = '';
+    for (var v = MINV; v <= MAXV; v++) {
+      var yy = yFor(v).toFixed(1);
+      var strong = (v === 1 || v === 3 || v === 6 || v === 8) ? ' strong' : '';
+      grid += '<line class="spark-grid' + strong + '" x1="' + x0 + '" y1="' + yy + '" x2="' + x1 + '" y2="' + yy + '"/>';
+    }
+    var bands = [[1, 'EM'], [3, 'DE'], [6, 'PR'], [8, 'EX']];
+    var axis = bands.map(function (b) {
+      return '<text class="spark-axis" x="' + (x0 - 6) + '" y="' + (yFor(b[0]) + 3).toFixed(1) + '" text-anchor="end">' + b[1] + '</text>';
+    }).join('');
+    var poly = pts.map(function (p, i) { return xFor(i).toFixed(1) + ',' + yFor(p.v).toFixed(1); }).join(' ');
+    var dots = pts.map(function (p, i) {
+      var ds = dstr(p.date);
+      var tip = esc(p.title + (ds ? ' · ' + ds : '') + ' · ' + calc.labelForValue(p.v) + ' (' + p.v.toFixed(1) + ')');
+      return '<circle class="spark-dot" cx="' + xFor(i).toFixed(1) + '" cy="' + yFor(p.v).toFixed(1) + '" r="4" fill="' +
+        calc.colorForValue(p.v) + '"><title>' + tip + '</title></circle>';
+    }).join('');
+    var xlab = '<text class="spark-axis" x="' + x0 + '" y="' + (VH - 8) + '" text-anchor="start">' + esc(dstr(pts[0].date)) + '</text>' +
+      '<text class="spark-axis" x="' + x1 + '" y="' + (VH - 8) + '" text-anchor="end">' + esc(dstr(pts[pts.length - 1].date)) + '</text>';
+
+    return '<div class="spark-wrap"><svg class="spark" viewBox="0 0 ' + VW + ' ' + VH + '" role="img" ' +
+      'aria-label="Progress over time">' + grid + axis +
+      '<polyline class="spark-line" fill="none" points="' + poly + '"/>' + dots + xlab + '</svg></div>';
+  }
+
   // ---------------------------------------------------------------- Modal: student detail
   function openStudentDetail(cls, student) {
     var sid = student.id;
@@ -1269,6 +1320,7 @@
 
         return '<div class="sd-subject"><div class="sd-subject-head"><h3>' + esc(subject.name) + '</h3>' +
           '<span class="sd-overall">Overall ' + overallPillHTML(overall) + '</span></div>' +
+          '<div class="sd-section-label">Progress over time</div>' + buildProgressChart(subject, sid) +
           '<div class="sd-section-label">Standing by competency</div><div class="sd-areas">' + compHTML + '</div>' +
           '<div class="sd-section-label">Assignments</div>' + asgTable + '</div>';
       }).join('');
