@@ -420,3 +420,12 @@ tr.avg-row .student-col { background: var(--surface-3); }
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
 }
+
+/* ---- gradebook "Marked" footer (completion counts) -------------------- */
+table.gradebook tfoot td {
+  position: sticky; bottom: 0; background: var(--surface-2);
+  z-index: 2; text-align: center; font-weight: 600; padding: 8px 10px;
+  border-top: 2px solid var(--border-strong);
+}
+table.gradebook tfoot .student-col { left: 0; z-index: 3; text-align: left; color: var(--muted); }
+.mark-foot.complete { color: #3a9d6b; font-weight: 700; }

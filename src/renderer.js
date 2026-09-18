@@ -129,6 +129,16 @@
   function studentOverall(subject, studentId) {
     return calc.overallGrade(subject.categories, assignmentsByCategory(subject), gradesForStudent(subject, studentId));
   }
+  // How many students have been marked on an assignment: a grade counts when a
+  // score is entered for at least one competency, or the student is excused.
+  function assignmentMarkedCount(a, students) {
+    var n = 0;
+    students.forEach(function (s) {
+      var g = a.grades && a.grades[s.id];
+      if (g && (g.excused || (g.scores && Object.keys(g.scores).length > 0))) n++;
+    });
+    return n;
+  }
   function classAverage(cls, subject) {
     var sum = 0, n = 0;
     cls.students.forEach(function (s) {
@@ -545,9 +555,22 @@
       '<option value="date"' + (state.ui.gradebookSort === 'date' ? ' selected' : '') + '>Date created</option>' +
       '</select></span></div>';
 
+    var total = cls.students.length;
+    var footCells = '';
+    order.forEach(function (a) {
+      var span = expanded[a.id] ? (a.competencies.length + 3) : 1;
+      var marked = assignmentMarkedCount(a, cls.students);
+      var complete = total > 0 && marked === total;
+      footCells += '<td class="mark-foot' + (complete ? ' complete' : '') + '" colspan="' + span + '" ' +
+        'data-mark-aid="' + a.id + '" title="Students marked (a grade entered or excused)">' +
+        marked + '/' + total + (complete ? ' ✓' : '') + '</td>';
+    });
+    var foot = '<tr class="mark-row"><td class="student-col">Marked</td>' + footCells + '<td class="overall-col"></td></tr>';
+
     host.innerHTML = bar +
       '<div class="gradebook-wrap"><table class="gradebook"><thead><tr>' + row1 + '</tr>' +
-      (hasSub ? '<tr>' + row2 + '</tr>' : '') + '</thead><tbody>' + body + '</tbody></table></div>' +
+      (hasSub ? '<tr>' + row2 + '</tr>' : '') + '</thead><tbody>' + body + '</tbody>' +
+      '<tfoot>' + foot + '</tfoot></table></div>' +
       '<div class="card" style="margin-top:16px"><div class="card-sub">Grade scale</div>' + scaleLegendHTML() + '</div>';
 
     if (hasSub) {
@@ -602,6 +625,14 @@
       var cell = host.querySelector('.course-overall[data-sid="' + sid + '"]');
       if (cell) cell.innerHTML = overallPillHTML(studentOverall(subject, sid).value);
     }
+    function updateMarkedFooter(a) {
+      var cell = host.querySelector('.mark-foot[data-mark-aid="' + a.id + '"]');
+      if (!cell) return;
+      var marked = assignmentMarkedCount(a, cls.students);
+      var complete = cls.students.length > 0 && marked === cls.students.length;
+      cell.className = 'mark-foot' + (complete ? ' complete' : '');
+      cell.textContent = marked + '/' + cls.students.length + (complete ? ' ✓' : '');
+    }
     function persist(inp) {
       var a = assignmentById(subject, inp.dataset.assignment);
       var sid = inp.dataset.student, cid = inp.dataset.comp;
@@ -611,7 +642,7 @@
       var n = calc.toNumber(inp.value);
       if (n === null) delete g.scores[cid]; else g.scores[cid] = n;
       if (!g.excused && !g.note && Object.keys(g.scores).length === 0) delete a.grades[sid]; else a.grades[sid] = g;
-      updateAsgOverall(a, sid); updateCourseOverall(sid); saveSoon();
+      updateAsgOverall(a, sid); updateCourseOverall(sid); updateMarkedFooter(a); saveSoon();
     }
     $all('.grade-input', host).forEach(function (inp) {
       inp.addEventListener('focus', function () { inp.select(); });
@@ -636,7 +667,7 @@
         g.excused = cb.checked;
         if (!g.excused && !g.note && (!g.scores || Object.keys(g.scores).length === 0)) delete a.grades[sid]; else a.grades[sid] = g;
         $all('.grade-input[data-assignment="' + a.id + '"][data-student="' + sid + '"]', host).forEach(function (inp) { inp.disabled = cb.checked; });
-        updateAsgOverall(a, sid); updateCourseOverall(sid); saveSoon();
+        updateAsgOverall(a, sid); updateCourseOverall(sid); updateMarkedFooter(a); saveSoon();
       });
     });
     $all('.note-btn', host).forEach(function (b) {
