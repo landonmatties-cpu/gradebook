@@ -771,10 +771,13 @@
           var c = competencyById(subject, ac.competencyId);
           return '<span class="tag">' + esc(c ? c.name : '(removed)') + ' · w' + ac.weight + '</span>';
         }).join(' ');
-        var extra = (a.notes ? '<div class="asg-notes">' + esc(a.notes) + '</div>' : '') + attachmentChipsHTML(a.attachments);
+        var hasRubric = a.rubric && a.rubric.rows && a.rubric.rows.length;
+        var extra = (a.notes ? '<div class="asg-notes">' + esc(a.notes) + '</div>' : '') +
+          (hasRubric ? '<span class="tag rubric-tag">Rubric ✓</span> ' : '') + attachmentChipsHTML(a.attachments);
         return '<tr><td><b>' + esc(a.title) + '</b><div style="margin-top:4px">' + comps + '</div>' + extra + '</td>' +
-          '<td style="width:170px"><div class="row-actions">' +
+          '<td style="width:240px"><div class="row-actions">' +
           '<button class="btn btn-sm btn-ghost" data-edit-asg="' + a.id + '">Edit</button>' +
+          '<button class="btn btn-sm btn-ghost" data-rubric-asg="' + a.id + '">' + (hasRubric ? 'Rubric' : '+ Rubric') + '</button>' +
           '<button class="btn btn-sm" data-grade-asg="' + a.id + '">Grade</button>' +
           '<button class="btn btn-sm btn-ghost danger" data-del-asg="' + a.id + '">✕</button></div></td></tr>';
       }).join('');
@@ -821,6 +824,7 @@
     var addAsg = $('#add-asg-btn', host);
     if (addAsg && subject.categories.length) addAsg.addEventListener('click', function () { openAssignmentModal(cls, subject, null); });
     $all('[data-edit-asg]', host).forEach(function (b) { b.addEventListener('click', function () { openAssignmentModal(cls, subject, b.dataset.editAsg); }); });
+    $all('[data-rubric-asg]', host).forEach(function (b) { b.addEventListener('click', function () { openRubricModal(cls, subject, assignmentById(subject, b.dataset.rubricAsg)); }); });
     $all('[data-grade-asg]', host).forEach(function (b) { b.addEventListener('click', function () { openAssignmentInGradebook(subject, b.dataset.gradeAsg); }); });
     $all('[data-del-asg]', host).forEach(function (b) {
       b.addEventListener('click', function () {
@@ -874,7 +878,7 @@
     var root = $('#modal-root');
     var backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
-    backdrop.innerHTML = '<div class="modal' + (opts.wide ? ' wide' : '') + '">' + html + '</div>';
+    backdrop.innerHTML = '<div class="modal' + (opts.wide ? ' wide' : '') + (opts.xwide ? ' xwide' : '') + '">' + html + '</div>';
     root.appendChild(backdrop);
     backdrop.addEventListener('mousedown', function (e) { if (e.target === backdrop && !opts.noBackdropClose) close(); });
     function close() { if (backdrop.parentNode) root.removeChild(backdrop); document.removeEventListener('keydown', onKey); }
@@ -1078,6 +1082,13 @@
         '<div style="margin-top:6px"><button type="button" class="btn btn-sm" id="as-attach-add">+ Attach a file</button>' +
         '<input type="file" id="as-attach-input" multiple hidden></div>' +
         '<div id="as-attach-msg" class="hint" style="margin-top:6px"></div></div>' : '') +
+      '<div class="form-row"><label>Rubric</label>' +
+      (existing ?
+        '<div><button type="button" class="btn btn-sm" id="as-rubric">' +
+        (existing.rubric && existing.rubric.rows && existing.rubric.rows.length ? 'Edit rubric' : 'Generate rubric from competencies') +
+        '</button></div>' :
+        '<div class="hint">Create the assignment first, then use its <b>Rubric</b> button to generate a printable rubric from these competencies.</div>') +
+      '</div>' +
       '<div class="modal-actions"><button class="btn" id="as-cancel">Cancel</button>' +
       '<button class="btn btn-primary" id="as-save">' + (existing ? 'Save' : 'Create') + '</button></div>';
 
@@ -1153,6 +1164,10 @@
     });
 
     $('#as-cancel', m.el).addEventListener('click', m.close);
+    if (existing) {
+      var rubBtn = $('#as-rubric', m.el);
+      if (rubBtn) rubBtn.addEventListener('click', function () { m.close(); openRubricModal(cls, subject, existing); });
+    }
     $('#as-save', m.el).addEventListener('click', function () {
       var saveBtn = this;
       var title = $('#as-title', m.el).value.trim();
@@ -1227,10 +1242,137 @@
       '<div class="form-row"><label>Curricular competencies</label><div>' + (comps || '<span class="hint">None</span>') + '</div></div>' +
       '<div class="form-row"><label>Attachments</label>' +
       (a.attachments && a.attachments.length ? attachmentChipsHTML(a.attachments) : '<div class="hint">None</div>') + '</div>' +
-      '<div class="modal-actions"><button class="btn btn-primary" id="ai-close">Close</button></div>';
+      '<div class="modal-actions" style="justify-content:space-between">' +
+      '<button class="btn" id="ai-rubric">' + (a.rubric && a.rubric.rows && a.rubric.rows.length ? 'Open rubric' : 'Generate rubric') + '</button>' +
+      '<button class="btn btn-primary" id="ai-close">Close</button></div>';
     var m = openModal(html);
     wireAttachmentOpens(m.el);
+    $('#ai-rubric', m.el).addEventListener('click', function () { m.close(); openRubricModal(currentClass(), subject, a); });
     $('#ai-close', m.el).addEventListener('click', m.close);
+  }
+
+  // ---------------------------------------------------------------- Rubric generator
+  var RUBRIC_LEVELS = ['Emerging', 'Developing', 'Proficient', 'Extending'];
+  function rubricStarterCells() {
+    return [
+      'Beginning to demonstrate this competency; needs significant support.',
+      'Demonstrates this competency inconsistently or with some support.',
+      'Consistently demonstrates this competency independently.',
+      'Demonstrates this competency with depth and transfers it to new situations.'
+    ];
+  }
+  // Add a row for every assessed competency not already present (keeps edits).
+  function generateRubricRows(subject, a, existing) {
+    var rows = (existing && existing.rows) ? existing.rows.slice() : [];
+    var have = {};
+    rows.forEach(function (r) { if (r.type === 'competency' && r.competencyId) have[r.competencyId] = true; });
+    a.competencies.forEach(function (ac) {
+      if (have[ac.competencyId]) return;
+      var c = competencyById(subject, ac.competencyId);
+      rows.push({ id: uid(), type: 'competency', competencyId: ac.competencyId,
+        label: c ? c.name : '(removed competency)', cells: rubricStarterCells() });
+    });
+    return rows;
+  }
+
+  function openRubricModal(cls, subject, a) {
+    if (!a) return;
+    var working = a.rubric ? JSON.parse(JSON.stringify(a.rubric)) : null;
+    var m = openModal('<div id="rubric-host"></div>', { xwide: true, noBackdropClose: true });
+    var host = $('#rubric-host', m.el);
+
+    function syncFromDOM() {
+      if (!working) return;
+      var t = $('#rub-title', host); if (t) working.title = t.value;
+      $all('tr[data-row]', host).forEach(function (tr) {
+        var row = working.rows.filter(function (r) { return r.id === tr.dataset.row; })[0];
+        if (!row) return;
+        var lab = $('.rub-label', tr); if (lab) row.label = lab.value;
+        $all('.rub-cell', tr).forEach(function (ta) { row.cells[Number(ta.dataset.i)] = ta.value; });
+      });
+    }
+    function missingCompCount() {
+      if (!working) return 0;
+      var have = {};
+      working.rows.forEach(function (r) { if (r.type === 'competency' && r.competencyId) have[r.competencyId] = true; });
+      return a.competencies.filter(function (ac) { return !have[ac.competencyId]; }).length;
+    }
+
+    function draw() {
+      if (!working) {
+        host.innerHTML = '<h2>Rubric — ' + esc(a.title) + '</h2>' +
+          '<p class="modal-sub">Generate a rubric from the ' + a.competencies.length + ' competenc' +
+          (a.competencies.length === 1 ? 'y' : 'ies') + ' this assignment assesses. Each becomes a row with editable ' +
+          'descriptors for Emerging, Developing, Proficient and Extending. You can edit everything and add your own ' +
+          'rows (e.g. Neatness, Effort) before printing.</p>' +
+          '<div class="modal-actions" style="justify-content:space-between">' +
+          '<button class="btn" id="rub-blank">Start blank</button>' +
+          '<span><button class="btn" id="rub-cancel">Cancel</button> ' +
+          '<button class="btn btn-primary" id="rub-generate">Generate rubric</button></span></div>';
+        $('#rub-cancel', host).addEventListener('click', m.close);
+        $('#rub-generate', host).addEventListener('click', function () { working = { title: a.title, rows: generateRubricRows(subject, a, null) }; draw(); });
+        $('#rub-blank', host).addEventListener('click', function () { working = { title: a.title, rows: [] }; draw(); });
+        return;
+      }
+
+      var headCols = RUBRIC_LEVELS.map(function (l) { return '<th>' + esc(l) + '</th>'; }).join('');
+      var bodyRows = working.rows.map(function (r) {
+        var cells = RUBRIC_LEVELS.map(function (l, i) {
+          return '<td><textarea class="rub-cell" data-i="' + i + '" rows="4">' + esc(r.cells[i] || '') + '</textarea></td>';
+        }).join('');
+        var labelCell = '<td class="rub-crit-cell"><input type="text" class="rub-label" value="' + esc(r.label) + '">' +
+          '<div class="rub-rowtype">' + (r.type === 'competency' ? 'competency' : 'custom') + '</div></td>';
+        return '<tr data-row="' + r.id + '">' + labelCell + cells +
+          '<td class="rub-del-cell"><button type="button" class="btn btn-sm btn-ghost danger" data-del="' + r.id + '" title="Remove row">✕</button></td></tr>';
+      }).join('');
+
+      var missing = missingCompCount();
+      host.innerHTML = '<h2>Rubric — ' + esc(a.title) + '</h2>' +
+        '<div class="form-row"><label>Rubric title</label><input type="text" id="rub-title" value="' + esc(working.title || a.title) + '"></div>' +
+        (working.rows.length ?
+          '<div class="table-wrap rubric-scroll"><table class="rubric-edit"><thead><tr><th class="rub-crit">Criterion</th>' +
+          headCols + '<th></th></tr></thead><tbody>' + bodyRows + '</tbody></table></div>' :
+          '<div class="empty-hint">No rows yet — add competencies or a custom row below.</div>') +
+        '<div class="rub-toolbar">' +
+        '<button type="button" class="btn btn-sm" id="rub-add-custom">+ Add custom row</button> ' +
+        (missing ? '<button type="button" class="btn btn-sm" id="rub-add-missing">+ Add ' + missing + ' competency row' + (missing === 1 ? '' : 's') + '</button>' : '') +
+        '</div>' +
+        '<div class="modal-actions" style="justify-content:space-between">' +
+        '<button class="btn" id="rub-print">🖨 Print / Save PDF</button>' +
+        '<span><button class="btn" id="rub-cancel">Cancel</button> ' +
+        '<button class="btn btn-primary" id="rub-save">Save rubric</button></span></div>';
+
+      $all('[data-del]', host).forEach(function (b) {
+        b.addEventListener('click', function () { syncFromDOM(); working.rows = working.rows.filter(function (r) { return r.id !== b.dataset.del; }); draw(); });
+      });
+      $('#rub-add-custom', host).addEventListener('click', function () {
+        syncFromDOM(); working.rows.push({ id: uid(), type: 'custom', label: 'New criterion', cells: ['', '', '', ''] }); draw();
+      });
+      var addMissing = $('#rub-add-missing', host);
+      if (addMissing) addMissing.addEventListener('click', function () { syncFromDOM(); working.rows = generateRubricRows(subject, a, working); draw(); });
+      $('#rub-cancel', host).addEventListener('click', m.close);
+      $('#rub-save', host).addEventListener('click', function () { syncFromDOM(); a.rubric = working; m.close(); saveSoon(); renderClassContent(cls); });
+      $('#rub-print', host).addEventListener('click', function () { syncFromDOM(); printRubric(cls, subject, a, working); });
+    }
+
+    draw();
+  }
+
+  function printRubric(cls, subject, a, rubric) {
+    var pr = document.getElementById('print-root');
+    if (!pr) return;
+    var head = '<div class="print-head"><h1>' + esc(rubric.title || a.title) + '</h1>' +
+      '<div class="print-meta">' + esc(subject.name) + ' · ' + esc(cls.name) + (cls.grade ? ' · Grade ' + esc(cls.grade) : '') + ' · Rubric</div>' +
+      '<div class="rubric-name-line">Name: ________________________     Date: ______________</div></div>';
+    var headCols = RUBRIC_LEVELS.map(function (l) { return '<th>' + esc(l) + '</th>'; }).join('');
+    var rows = (rubric.rows || []).map(function (r) {
+      var cells = RUBRIC_LEVELS.map(function (l, i) { return '<td>' + esc(r.cells[i] || '').replace(/\n/g, '<br>') + '</td>'; }).join('');
+      return '<tr><th class="rub-crit">' + esc(r.label) + '</th>' + cells + '</tr>';
+    }).join('');
+    pr.innerHTML = '<div class="print-report rubric-report">' + head +
+      '<table class="rubric-print"><thead><tr><th class="rub-crit">Criterion</th>' + headCols +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    window.print();
   }
 
   // ---------------------------------------------------------------- Modal: per-grade note
