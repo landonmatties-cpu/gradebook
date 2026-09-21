@@ -455,3 +455,16 @@ table.rubric-edit th.rub-crit { text-align: left; min-width: 150px; }
   table.rubric-print th.rub-crit { width: 20%; font-weight: 700; text-align: left; }
   table.rubric-print tr { break-inside: avoid; }
 }
+
+/* ---- per-competency proficiency descriptors --------------------------- */
+.desc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.desc-item { display: flex; flex-direction: column; gap: 4px; }
+.desc-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.desc-item textarea { resize: vertical; }
+.mini-badge {
+  display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .3px; color: var(--primary); background: var(--active-bg);
+  border: 1px solid var(--active-border); border-radius: 999px; padding: 1px 7px; margin-left: 6px;
+  vertical-align: middle;
+}
+@media (max-width: 620px) { .desc-grid { grid-template-columns: 1fr; } }

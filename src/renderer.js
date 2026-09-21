@@ -841,7 +841,8 @@
     var groups = competenciesByArea(subject);
     var sections = groups.map(function (g) {
       var rows = g.comps.map(function (c) {
-        return '<tr><td>' + esc(c.name) + '</td><td style="width:130px"><div class="row-actions">' +
+        var badge = competencyHasDescriptors(c) ? ' <span class="mini-badge" title="Rubric descriptors written for this competency">descriptors ✓</span>' : '';
+        return '<tr><td>' + esc(c.name) + badge + '</td><td style="width:130px"><div class="row-actions">' +
           '<button class="btn btn-sm btn-ghost" data-edit-comp="' + c.id + '">Edit</button>' +
           '<button class="btn btn-sm btn-ghost danger" data-del-comp="' + c.id + '">✕</button></div></td></tr>';
       }).join('');
@@ -1021,17 +1022,38 @@
   // ---------------------------------------------------------------- Modal: competency
   function openCompetencyModal(cls, subject, id) {
     var existing = id ? competencyById(subject, id) : null;
+    var d = (existing && existing.descriptors) || {};
+    var descFields = RUBRIC_LEVELS.map(function (label, i) {
+      var key = RUBRIC_LEVEL_KEYS[i];
+      return '<div class="desc-item"><div class="desc-label">' + label + '</div>' +
+        '<textarea class="co-desc" data-key="' + key + '" rows="2" placeholder="What ' + label + ' looks like for this competency…">' +
+        esc(d[key] || '') + '</textarea></div>';
+    }).join('');
     var m = openModal('<h2>' + (existing ? 'Edit' : 'Add') + ' competency</h2>' +
       '<div class="form-row"><label>Competency</label><textarea id="co-name" rows="2">' + esc(existing ? existing.name : '') + '</textarea></div>' +
       '<div class="form-row"><label>Area / grouping <span class="hint">optional</span></label>' +
       '<input type="text" id="co-area" value="' + esc(existing ? existing.area : '') + '" placeholder="e.g. Comprehend &amp; Connect"></div>' +
-      '<div class="modal-actions"><button class="btn" id="co-cancel">Cancel</button><button class="btn btn-primary" id="co-save">Save</button></div>');
+      '<div class="form-row"><label>Proficiency descriptors <span class="hint">optional — what each level looks like for this competency; used on generated rubrics so students see the objective and why they earned their grade</span></label>' +
+      '<div class="desc-grid">' + descFields + '</div></div>' +
+      '<div class="modal-actions"><button class="btn" id="co-cancel">Cancel</button><button class="btn btn-primary" id="co-save">Save</button></div>',
+      { wide: true });
     $('#co-name', m.el).focus();
     $('#co-cancel', m.el).addEventListener('click', m.close);
     $('#co-save', m.el).addEventListener('click', function () {
       var name = $('#co-name', m.el).value.trim(); var area = $('#co-area', m.el).value.trim();
       if (!name) return;
-      if (existing) { existing.name = name; existing.area = area; } else subject.competencies.push({ id: uid(), name: name, area: area });
+      var descriptors = {}; var anyDesc = false;
+      $all('.co-desc', m.el).forEach(function (ta) {
+        var v = ta.value.trim(); descriptors[ta.dataset.key] = v; if (v) anyDesc = true;
+      });
+      if (existing) {
+        existing.name = name; existing.area = area;
+        if (anyDesc) existing.descriptors = descriptors; else delete existing.descriptors;
+      } else {
+        var c = { id: uid(), name: name, area: area };
+        if (anyDesc) c.descriptors = descriptors;
+        subject.competencies.push(c);
+      }
       m.close(); saveSoon(); renderClassContent(cls);
     });
   }
@@ -1253,12 +1275,24 @@
 
   // ---------------------------------------------------------------- Rubric generator
   var RUBRIC_LEVELS = ['Emerging', 'Developing', 'Proficient', 'Extending'];
-  function rubricStarterCells() {
+  var RUBRIC_LEVEL_KEYS = ['emerging', 'developing', 'proficient', 'extending'];
+  function competencyHasDescriptors(c) {
+    var d = c && c.descriptors;
+    return !!(d && (d.emerging || d.developing || d.proficient || d.extending));
+  }
+  // The four level descriptors for a competency: the teacher-authored ones when
+  // present, otherwise a competency-named starter phrased for students.
+  function competencyDescriptorCells(c) {
+    if (competencyHasDescriptors(c)) {
+      var d = c.descriptors;
+      return [d.emerging || '', d.developing || '', d.proficient || '', d.extending || ''];
+    }
+    var n = (c && c.name) ? c.name : 'this skill';
     return [
-      'Beginning to demonstrate this competency; needs significant support.',
-      'Demonstrates this competency inconsistently or with some support.',
-      'Consistently demonstrates this competency independently.',
-      'Demonstrates this competency with depth and transfers it to new situations.'
+      'Beginning to work toward “' + n + '” — needs significant support.',
+      'Working toward “' + n + '” — demonstrates it inconsistently or with some support.',
+      'Meets “' + n + '” — demonstrates it accurately and independently.',
+      'Exceeds “' + n + '” — demonstrates it with depth and applies it in new situations.'
     ];
   }
   // Add a row for every assessed competency not already present (keeps edits).
@@ -1270,7 +1304,7 @@
       if (have[ac.competencyId]) return;
       var c = competencyById(subject, ac.competencyId);
       rows.push({ id: uid(), type: 'competency', competencyId: ac.competencyId,
-        label: c ? c.name : '(removed competency)', cells: rubricStarterCells() });
+        label: c ? c.name : '(removed competency)', cells: competencyDescriptorCells(c) });
     });
     return rows;
   }
