@@ -1033,12 +1033,21 @@
       '<div class="form-row"><label>Competency</label><textarea id="co-name" rows="2">' + esc(existing ? existing.name : '') + '</textarea></div>' +
       '<div class="form-row"><label>Area / grouping <span class="hint">optional</span></label>' +
       '<input type="text" id="co-area" value="' + esc(existing ? existing.area : '') + '" placeholder="e.g. Comprehend &amp; Connect"></div>' +
-      '<div class="form-row"><label>Proficiency descriptors <span class="hint">optional — what each level looks like for this competency; used on generated rubrics so students see the objective and why they earned their grade</span></label>' +
+      '<div class="form-row"><label>Proficiency descriptors ' +
+      '<span class="hint">optional — what each level looks like for this competency; used on generated rubrics so students see the objective and why they earned their grade</span></label>' +
+      '<div style="margin-bottom:8px"><button type="button" class="btn btn-sm" id="co-starter">Insert starter descriptors</button> ' +
+      '<span class="hint">fills empty boxes with an editable draft based on the competency name</span></div>' +
       '<div class="desc-grid">' + descFields + '</div></div>' +
       '<div class="modal-actions"><button class="btn" id="co-cancel">Cancel</button><button class="btn btn-primary" id="co-save">Save</button></div>',
       { wide: true });
     $('#co-name', m.el).focus();
     $('#co-cancel', m.el).addEventListener('click', m.close);
+    $('#co-starter', m.el).addEventListener('click', function () {
+      var cells = starterDescriptorCells($('#co-name', m.el).value);
+      $all('.co-desc', m.el).forEach(function (ta) {
+        if (!ta.value.trim()) { ta.value = cells[RUBRIC_LEVEL_KEYS.indexOf(ta.dataset.key)]; }
+      });
+    });
     $('#co-save', m.el).addEventListener('click', function () {
       var name = $('#co-name', m.el).value.trim(); var area = $('#co-area', m.el).value.trim();
       if (!name) return;
@@ -1280,20 +1289,27 @@
     var d = c && c.descriptors;
     return !!(d && (d.emerging || d.developing || d.proficient || d.extending));
   }
+  // A substantive starter rubric for a competency, differentiated by level and
+  // aligned to the BC proficiency scale (initial → partial → complete →
+  // sophisticated understanding). Named for the competency and phrased so a
+  // student can see what is being demonstrated — meant to be lightly edited.
+  function starterDescriptorCells(name) {
+    var n = (name && name.trim()) ? name.trim() : 'this skill';
+    return [
+      'Shows an initial understanding of “' + n + '.” Beginning to demonstrate the skill, usually with support and prompting; work is often incomplete or contains notable errors.',
+      'Shows a partial understanding of “' + n + '.” Demonstrates the skill on familiar tasks with some support or reminders; generally on the right track but not yet accurate or consistent.',
+      'Shows a complete understanding of “' + n + '.” Demonstrates the skill accurately and independently on the expected tasks, consistently meeting the learning goal.',
+      'Shows a sophisticated understanding of “' + n + '.” Demonstrates the skill independently and consistently, and transfers it to new or more complex situations with depth, precision, and insight.'
+    ];
+  }
   // The four level descriptors for a competency: the teacher-authored ones when
-  // present, otherwise a competency-named starter phrased for students.
+  // present, otherwise the substantive starter above.
   function competencyDescriptorCells(c) {
     if (competencyHasDescriptors(c)) {
       var d = c.descriptors;
       return [d.emerging || '', d.developing || '', d.proficient || '', d.extending || ''];
     }
-    var n = (c && c.name) ? c.name : 'this skill';
-    return [
-      'Beginning to work toward “' + n + '” — needs significant support.',
-      'Working toward “' + n + '” — demonstrates it inconsistently or with some support.',
-      'Meets “' + n + '” — demonstrates it accurately and independently.',
-      'Exceeds “' + n + '” — demonstrates it with depth and applies it in new situations.'
-    ];
+    return starterDescriptorCells(c && c.name);
   }
   // Add a row for every assessed competency not already present (keeps edits).
   function generateRubricRows(subject, a, existing) {
