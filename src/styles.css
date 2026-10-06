@@ -468,3 +468,26 @@ table.rubric-edit th.rub-crit { text-align: left; min-width: 150px; }
   vertical-align: middle;
 }
 @media (max-width: 620px) { .desc-grid { grid-template-columns: 1fr; } }
+
+/* ---- bonus assignments / categories (tracked separately, not counted) --- */
+.bonus-chip, .bonus-badge {
+  display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .3px; color: #8a5a00; background: #fff3d6; border: 1px solid #f0d58a;
+  border-radius: 999px; padding: 0 6px; vertical-align: middle;
+}
+:root[data-theme="dark"] .bonus-chip, :root[data-theme="dark"] .bonus-badge {
+  color: #ffd27d; background: #3a2f12; border-color: #5c4a1c;
+}
+.bonus-toggle { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
+.pill-total-sub { font-weight: 600; color: #8a5a00; font-size: 11px; }
+:root[data-theme="dark"] .pill-total-sub { color: #ffd27d; }
+
+/* bonus column + cells in the gradebook */
+table.gradebook .bonus-col { background: var(--surface-3); border-left: 2px solid var(--border-strong); }
+table.gradebook thead .bonus-col { background: var(--surface-3); }
+.bonus-sub { font-weight: 400; font-size: 10px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+
+/* bonus rows elsewhere */
+.bonus-cat-row td:first-child { font-weight: 600; }
+.sd-bonus { margin-left: 10px; color: var(--muted); }
+.bonus-row td { background: color-mix(in srgb, var(--surface-3) 60%, transparent); }

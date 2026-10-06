@@ -83,6 +83,7 @@
       cls.subjects.forEach(function (sub) {
         sub.competencies = sub.competencies || [];
         sub.categories = sub.categories || [];
+        sub.categories.forEach(function (c) { if (typeof c.bonus !== 'boolean') c.bonus = false; });
         sub.assignments = sub.assignments || [];
         sub.assignments.forEach(function (a, i) {
           if (!a.createdAt) a.createdAt = base + i;
@@ -126,8 +127,23 @@
     subject.assignments.forEach(function (a) { if (a.grades && a.grades[studentId]) out[a.id] = a.grades[studentId]; });
     return out;
   }
+  function isBonusCat(cat) { return !!(cat && cat.bonus); }
+  function subjectHasBonus(subject) { return subject.categories.some(isBonusCat); }
+  function assignmentIsBonus(subject, a) {
+    var c = subject.categories.filter(function (x) { return x.id === a.categoryId; })[0];
+    return isBonusCat(c);
+  }
+  // Overall grade excludes bonus categories entirely — bonus never affects it.
   function studentOverall(subject, studentId) {
-    return calc.overallGrade(subject.categories, assignmentsByCategory(subject), gradesForStudent(subject, studentId));
+    var cats = subject.categories.filter(function (c) { return !isBonusCat(c); });
+    return calc.overallGrade(cats, assignmentsByCategory(subject), gradesForStudent(subject, studentId));
+  }
+  // A separate, context-only standing across the bonus categories (same math,
+  // its own weights). Never folded into the overall grade.
+  function studentBonusStanding(subject, studentId) {
+    var cats = subject.categories.filter(isBonusCat);
+    if (!cats.length) return { value: null, breakdown: [] };
+    return calc.overallGrade(cats, assignmentsByCategory(subject), gradesForStudent(subject, studentId));
   }
   // How many students have been marked on an assignment: a grade counts when a
   // score is entered for at least one competency, or the student is excused.
@@ -479,6 +495,7 @@
     editCols.forEach(function (e, i) { editIndex[e.aid + '|' + e.cid] = i; });
     var hasSub = editCols.length > 0;
     var rs = hasSub ? ' rowspan="2"' : '';
+    var hasBonus = subjectHasBonus(subject);
 
     var row1 = '<th class="student-col"' + rs + '>Student</th>';
     var row2 = '';
@@ -487,11 +504,12 @@
         ? new Date(a.createdAt || 0).toLocaleDateString() : catNameFor(subject, a);
       var hasInfo = a.notes || (a.attachments && a.attachments.length);
       var infoBtn = hasInfo ? '<button type="button" class="ah-info" data-info="' + a.id + '" title="Description &amp; attachments">ⓘ</button>' : '';
+      var bonusChip = assignmentIsBonus(subject, a) ? ' <span class="bonus-chip">bonus</span>' : '';
       if (expanded[a.id]) {
         var span = a.competencies.length + 3;
         row1 += '<th class="asg-group" colspan="' + span + '" data-toggle="' + a.id + '">' +
           '<span class="ah-title">' + esc(a.title) + '</span> <span class="caret">▾ collapse</span>' + infoBtn +
-          '<div class="cat-tag">' + esc(meta) + '</div></th>';
+          '<div class="cat-tag">' + esc(meta) + bonusChip + '</div></th>';
         a.competencies.forEach(function (ac) {
           var c = competencyById(subject, ac.competencyId);
           row2 += '<th class="asg-sub comp-col" title="' + esc(c ? c.name : '') + '">' +
@@ -506,10 +524,12 @@
           '<span class="ah-toggle" data-toggle="' + a.id + '"><span class="ah-title">' + esc(a.title) + '</span> ' +
           '<span class="caret">▸ edit</span></span>' + infoBtn +
           '<div class="ah-meta">' + a.competencies.length + ' comp' + (a.competencies.length === 1 ? '' : 's') + '</div>' +
-          '<div class="cat-tag">' + esc(meta) + '</div></th>';
+          '<div class="cat-tag">' + esc(meta) + bonusChip + '</div></th>';
       }
     });
     row1 += '<th class="overall-col"' + rs + '>Course<br>Overall</th>';
+    if (hasBonus) row1 += '<th class="overall-col bonus-col"' + rs +
+      ' title="Bonus standing — graded but NOT counted in the grade; context only">Bonus<br><span class="bonus-sub">context only</span></th>';
 
     var body = '';
     cls.students.forEach(function (stu, ri) {
@@ -540,6 +560,8 @@
       });
       row += '<td class="grade-cell overall-col course-overall" data-sid="' + stu.id + '">' +
         overallPillHTML(studentOverall(subject, stu.id).value) + '</td>';
+      if (hasBonus) row += '<td class="grade-cell overall-col bonus-col bonus-cell-std" data-bonus-sid="' + stu.id + '">' +
+        overallPillHTML(studentBonusStanding(subject, stu.id).value) + '</td>';
       body += '<tr>' + row + '</tr>';
     });
 
@@ -565,7 +587,8 @@
         'data-mark-aid="' + a.id + '" title="Students marked (a grade entered or excused)">' +
         marked + '/' + total + (complete ? ' ✓' : '') + '</td>';
     });
-    var foot = '<tr class="mark-row"><td class="student-col">Marked</td>' + footCells + '<td class="overall-col"></td></tr>';
+    var foot = '<tr class="mark-row"><td class="student-col">Marked</td>' + footCells + '<td class="overall-col"></td>' +
+      (hasBonus ? '<td class="overall-col bonus-col"></td>' : '') + '</tr>';
 
     host.innerHTML = bar +
       '<div class="gradebook-wrap"><table class="gradebook"><thead><tr>' + row1 + '</tr>' +
@@ -624,6 +647,8 @@
     function updateCourseOverall(sid) {
       var cell = host.querySelector('.course-overall[data-sid="' + sid + '"]');
       if (cell) cell.innerHTML = overallPillHTML(studentOverall(subject, sid).value);
+      var bcell = host.querySelector('.bonus-cell-std[data-bonus-sid="' + sid + '"]');
+      if (bcell) bcell.innerHTML = overallPillHTML(studentBonusStanding(subject, sid).value);
     }
     function updateMarkedFooter(a) {
       var cell = host.querySelector('.mark-foot[data-mark-aid="' + a.id + '"]');
@@ -744,22 +769,27 @@
   // ---------------------------------------------------------------- Assignments (subject)
   function renderAssignments(host, cls, subject) {
     var byCat = assignmentsByCategory(subject);
-    var totalWeight = subject.categories.reduce(function (s, c) { return s + (Number(c.weight) || 0); }, 0);
+    var totalWeight = subject.categories.reduce(function (s, c) { return s + (isBonusCat(c) ? 0 : (Number(c.weight) || 0)); }, 0);
+    var anyBonus = subjectHasBonus(subject);
 
     var catRows = subject.categories.map(function (cat) {
-      return '<tr><td>' + esc(cat.name) + '</td>' +
+      return '<tr' + (isBonusCat(cat) ? ' class="bonus-cat-row"' : '') + '><td>' + esc(cat.name) +
+        (isBonusCat(cat) ? ' <span class="mini-badge bonus-badge">bonus</span>' : '') + '</td>' +
         '<td style="width:120px"><input type="number" min="0" class="cat-weight" data-cat="' + cat.id +
         '" value="' + (Number(cat.weight) || 0) + '" style="width:90px"> %</td>' +
+        '<td style="width:150px"><label class="bonus-toggle" title="Bonus categories are graded normally but never count toward the overall grade — tracked separately for context.">' +
+        '<input type="checkbox" class="cat-bonus" data-cat="' + cat.id + '"' + (isBonusCat(cat) ? ' checked' : '') + '> Bonus</label></td>' +
         '<td style="width:150px"><div class="row-actions">' +
         '<button class="btn btn-sm btn-ghost" data-rename-cat="' + cat.id + '">Rename</button>' +
         '<button class="btn btn-sm btn-ghost danger" data-del-cat="' + cat.id + '">✕</button></div></td></tr>';
     }).join('');
 
     var catCard = '<div class="card"><div class="section-head"><div>' +
-      '<h2>Categories &amp; weights</h2><div class="card-sub">Each category counts toward the overall grade by its weight (relative — need not total 100).</div></div>' +
-      '<span class="pill-total">Total: ' + totalWeight + '%</span></div>' +
+      '<h2>Categories &amp; weights</h2><div class="card-sub">Each category counts toward the overall grade by its weight (relative — need not total 100). ' +
+      'Mark a category <b>Bonus</b> to grade its assignments normally but keep them out of the grade — tracked separately for context.</div></div>' +
+      '<span class="pill-total">Total: ' + totalWeight + '%' + (anyBonus ? ' <span class="pill-total-sub">+ bonus</span>' : '') + '</span></div>' +
       (subject.categories.length ?
-        '<div class="table-wrap"><table class="data"><thead><tr><th>Category</th><th>Weight</th><th></th></tr></thead><tbody>' + catRows + '</tbody></table></div>' :
+        '<div class="table-wrap"><table class="data"><thead><tr><th>Category</th><th>Weight</th><th>Type</th><th></th></tr></thead><tbody>' + catRows + '</tbody></table></div>' :
         '<div class="empty-hint">No categories yet.</div>') +
       '<div style="margin-top:12px"><button class="btn btn-sm" id="add-cat-btn">+ Add category</button></div></div>';
 
@@ -781,7 +811,8 @@
           '<button class="btn btn-sm" data-grade-asg="' + a.id + '">Grade</button>' +
           '<button class="btn btn-sm btn-ghost danger" data-del-asg="' + a.id + '">✕</button></div></td></tr>';
       }).join('');
-      return '<h3 style="margin:16px 0 6px;font-size:14px">' + esc(cat.name) + '</h3>' +
+      return '<h3 style="margin:16px 0 6px;font-size:14px">' + esc(cat.name) +
+        (isBonusCat(cat) ? ' <span class="mini-badge bonus-badge">bonus · not counted</span>' : '') + '</h3>' +
         '<div class="table-wrap"><table class="data"><tbody>' + rows + '</tbody></table></div>';
     }).join('');
 
@@ -795,7 +826,13 @@
     wireAttachmentOpens(host);
     $('#add-cat-btn', host).addEventListener('click', function () {
       promptText('New category', 'Category name', '', function (name) {
-        if (!name) return; subject.categories.push({ id: uid(), name: name, weight: 0 }); saveSoon(); renderClassContent(cls);
+        if (!name) return; subject.categories.push({ id: uid(), name: name, weight: 0, bonus: false }); saveSoon(); renderClassContent(cls);
+      });
+    });
+    $all('.cat-bonus', host).forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var cat = subject.categories.filter(function (c) { return c.id === cb.dataset.cat; })[0];
+        if (cat) { cat.bonus = cb.checked; saveSoon(); renderClassContent(cls); }
       });
     });
     $all('.cat-weight', host).forEach(function (inp) {
@@ -1074,7 +1111,8 @@
     if (existing) existing.competencies.forEach(function (ac) { selected[ac.competencyId] = ac.weight; });
 
     var catOptions = subject.categories.map(function (c) {
-      return '<option value="' + c.id + '"' + (existing && existing.categoryId === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+      return '<option value="' + c.id + '"' + (existing && existing.categoryId === c.id ? ' selected' : '') + '>' +
+        esc(c.name) + (isBonusCat(c) ? ' (bonus)' : '') + '</option>';
     }).join('');
 
     var groups = competenciesByArea(subject);
@@ -1458,6 +1496,7 @@
     var pts = subject.assignments.slice()
       .sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); })
       .map(function (a) {
+        if (assignmentIsBonus(subject, a)) return null; // bonus isn't part of graded progress
         var g = a.grades && a.grades[sid];
         if (!g || g.excused) return null;
         var v = calc.assignmentScore(a, g.scores);
@@ -1532,7 +1571,9 @@
               '<span class="sd-mini-name">' + esc(truncate(c ? c.name : '(removed)', 26)) + '</span></span>';
           }).join('');
           var noteHTML = g.note ? '<div class="sd-note">📝 ' + esc(g.note) + '</div>' : '';
-          return '<tr><td>' + esc(a.title) + (per ? '<div class="sd-mini-wrap">' + per + '</div>' : '') + noteHTML + '</td>' +
+          var bonusTag = assignmentIsBonus(subject, a) ? ' <span class="bonus-chip">bonus</span>' : '';
+          return '<tr' + (assignmentIsBonus(subject, a) ? ' class="bonus-row"' : '') + '><td>' + esc(a.title) + bonusTag +
+            (per ? '<div class="sd-mini-wrap">' + per + '</div>' : '') + noteHTML + '</td>' +
             '<td class="sd-cat">' + esc(catNameFor(subject, a)) + '</td>' +
             '<td style="text-align:center">' + scoreCell + '</td></tr>';
         }).join('');
@@ -1541,8 +1582,12 @@
           '<th style="text-align:center">Grade</th></tr></thead><tbody>' + asgRows + '</tbody></table></div>' :
           '<div class="hint">No assignments yet.</div>';
 
+        var bonusVal = studentBonusStanding(subject, sid).value;
+        var bonusHead = (bonusVal !== null)
+          ? '<span class="sd-overall sd-bonus" title="Bonus standing — not counted in the grade">Bonus ' + overallPillHTML(bonusVal) + '</span>'
+          : '';
         return '<div class="sd-subject"><div class="sd-subject-head"><h3>' + esc(subject.name) + '</h3>' +
-          '<span class="sd-overall">Overall ' + overallPillHTML(overall) + '</span></div>' +
+          '<span class="sd-overall">Overall ' + overallPillHTML(overall) + '</span>' + bonusHead + '</div>' +
           '<div class="sd-section-label">Progress over time</div>' + buildProgressChart(subject, sid) +
           '<div class="sd-section-label">Standing by competency</div><div class="sd-areas">' + compHTML + '</div>' +
           '<div class="sd-section-label">Assignments</div>' + asgTable + '</div>';
