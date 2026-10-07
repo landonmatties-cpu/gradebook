@@ -34,6 +34,7 @@
   var pendingGradeFocus = false;
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function randAttachId() { var s = ''; for (var i = 0; i < 24; i++) s += '0123456789abcdef'[Math.floor(Math.random() * 16)]; return s; }
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -805,9 +806,10 @@
         var extra = (a.notes ? '<div class="asg-notes">' + esc(a.notes) + '</div>' : '') +
           (hasRubric ? '<span class="tag rubric-tag">Rubric ✓</span> ' : '') + attachmentChipsHTML(a.attachments);
         return '<tr><td><b>' + esc(a.title) + '</b><div style="margin-top:4px">' + comps + '</div>' + extra + '</td>' +
-          '<td style="width:240px"><div class="row-actions">' +
+          '<td style="width:310px"><div class="row-actions">' +
           '<button class="btn btn-sm btn-ghost" data-edit-asg="' + a.id + '">Edit</button>' +
           '<button class="btn btn-sm btn-ghost" data-rubric-asg="' + a.id + '">' + (hasRubric ? 'Rubric' : '+ Rubric') + '</button>' +
+          '<button class="btn btn-sm btn-ghost" data-copy-asg="' + a.id + '">Copy to…</button>' +
           '<button class="btn btn-sm" data-grade-asg="' + a.id + '">Grade</button>' +
           '<button class="btn btn-sm btn-ghost danger" data-del-asg="' + a.id + '">✕</button></div></td></tr>';
       }).join('');
@@ -862,6 +864,7 @@
     if (addAsg && subject.categories.length) addAsg.addEventListener('click', function () { openAssignmentModal(cls, subject, null); });
     $all('[data-edit-asg]', host).forEach(function (b) { b.addEventListener('click', function () { openAssignmentModal(cls, subject, b.dataset.editAsg); }); });
     $all('[data-rubric-asg]', host).forEach(function (b) { b.addEventListener('click', function () { openRubricModal(cls, subject, assignmentById(subject, b.dataset.rubricAsg)); }); });
+    $all('[data-copy-asg]', host).forEach(function (b) { b.addEventListener('click', function () { openCopyAssignmentModal(cls, subject, assignmentById(subject, b.dataset.copyAsg)); }); });
     $all('[data-grade-asg]', host).forEach(function (b) { b.addEventListener('click', function () { openAssignmentInGradebook(subject, b.dataset.gradeAsg); }); });
     $all('[data-del-asg]', host).forEach(function (b) {
       b.addEventListener('click', function () {
@@ -1461,6 +1464,117 @@
       '<table class="rubric-print"><thead><tr><th class="rub-crit">Criterion</th>' + headCols +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     window.print();
+  }
+
+  // ---------------------------------------------------------------- Copy assignment to another class/subject
+  function matchByName(list, name) {
+    var key = String(name || '').trim().toLowerCase();
+    return list.filter(function (x) { return String(x.name || '').trim().toLowerCase() === key; })[0] || null;
+  }
+  // Copy assignment `a` from srcSubject into destSubject, remapping its category
+  // and competencies by name (creating any the destination is missing) and
+  // duplicating attachments. Grades are not copied. Calls done(newAssignment).
+  function copyAssignmentInto(srcSubject, a, destSubject, done) {
+    // category
+    var srcCat = srcSubject.categories.filter(function (c) { return c.id === a.categoryId; })[0];
+    var destCat = srcCat ? matchByName(destSubject.categories, srcCat.name) : null;
+    if (srcCat && !destCat) {
+      destCat = { id: uid(), name: srcCat.name, weight: srcCat.weight, bonus: !!srcCat.bonus };
+      destSubject.categories.push(destCat);
+    }
+    // competencies (map src id -> dest id, creating missing ones)
+    var compMap = {};
+    a.competencies.forEach(function (ac) {
+      var srcComp = competencyById(srcSubject, ac.competencyId);
+      if (!srcComp) return;
+      var destComp = matchByName(destSubject.competencies, srcComp.name);
+      if (!destComp) {
+        destComp = { id: uid(), name: srcComp.name, area: srcComp.area };
+        if (srcComp.descriptors) destComp.descriptors = JSON.parse(JSON.stringify(srcComp.descriptors));
+        destSubject.competencies.push(destComp);
+      }
+      compMap[ac.competencyId] = destComp.id;
+    });
+    var newComps = a.competencies
+      .filter(function (ac) { return compMap[ac.competencyId]; })
+      .map(function (ac) { return { competencyId: compMap[ac.competencyId], weight: ac.weight }; });
+
+    var newA = {
+      id: uid(), title: a.title,
+      categoryId: destCat ? destCat.id : (destSubject.categories[0] ? destSubject.categories[0].id : ''),
+      competencies: newComps, notes: a.notes || '', attachments: [], grades: {}, createdAt: Date.now()
+    };
+    if (a.rubric) {
+      newA.rubric = JSON.parse(JSON.stringify(a.rubric));
+      (newA.rubric.rows || []).forEach(function (r) {
+        if (r.type === 'competency') r.competencyId = (r.competencyId && compMap[r.competencyId]) ? compMap[r.competencyId] : null;
+      });
+    }
+    destSubject.assignments.push(newA);
+
+    var atts = a.attachments || [];
+    var canDup = atts.length && window.api && window.api.attachmentRead && window.api.attachmentImport;
+    function finish() { if (done) done(newA); }
+    if (!canDup) {
+      // Fallback: reference the same stored files (shared) when we can't duplicate.
+      newA.attachments = atts.map(function (x) { return { id: x.id, name: x.name, type: x.type, size: x.size }; });
+      finish();
+      return;
+    }
+    Promise.all(atts.map(function (x) {
+      return window.api.attachmentRead(x.id).then(function (r) {
+        if (!r || !r.ok) return null;
+        var newId = randAttachId();
+        return window.api.attachmentImport(newId, x.name, x.type, r.dataBase64).then(function (res) {
+          return (res && res.ok) ? { id: newId, name: x.name, type: x.type, size: x.size } : null;
+        });
+      }).catch(function () { return null; });
+    })).then(function (results) {
+      newA.attachments = results.filter(Boolean);
+      finish();
+    });
+  }
+
+  function openCopyAssignmentModal(srcCls, srcSubject, a) {
+    if (!a) return;
+    var classOpts = state.classes.map(function (c) {
+      return '<option value="' + c.id + '"' + (c.id === srcCls.id ? ' selected' : '') + '>' +
+        esc(c.name) + (c.grade ? ' (Gr ' + esc(c.grade) + ')' : '') + '</option>';
+    }).join('');
+    var m = openModal('<h2>Copy assignment</h2>' +
+      '<p class="modal-sub">Copy “' + esc(a.title) + '” into another class &amp; subject. Its title, competencies, category, ' +
+      'description, rubric and attachments come along; <b>student grades are not copied</b>. Any competency or category the ' +
+      'destination doesn\'t have yet is added to it.</p>' +
+      '<div class="inline-fields"><div class="form-row" style="flex:1"><label>Destination class</label>' +
+      '<select id="cp-class">' + classOpts + '</select></div>' +
+      '<div class="form-row" style="flex:1"><label>Destination subject</label><select id="cp-subject"></select></div></div>' +
+      '<div id="cp-warn" class="warn"></div>' +
+      '<div class="modal-actions"><button class="btn" id="cp-cancel">Cancel</button>' +
+      '<button class="btn btn-primary" id="cp-ok">Copy assignment</button></div>');
+    var classSel = $('#cp-class', m.el), subjSel = $('#cp-subject', m.el), warn = $('#cp-warn', m.el), okBtn = $('#cp-ok', m.el);
+    function fillSubjects() {
+      var c = findClass(classSel.value);
+      var subs = (c && c.subjects) || [];
+      subjSel.innerHTML = subs.map(function (s) {
+        return '<option value="' + s.id + '"' + ((c.id === srcCls.id && s.id === srcSubject.id) ? ' selected' : '') + '>' + esc(s.name) + '</option>';
+      }).join('');
+      if (!subs.length) { warn.textContent = 'That class has no subjects yet — add one there first.'; okBtn.disabled = true; }
+      else { warn.textContent = ''; okBtn.disabled = false; }
+    }
+    fillSubjects();
+    classSel.addEventListener('change', fillSubjects);
+    $('#cp-cancel', m.el).addEventListener('click', m.close);
+    okBtn.addEventListener('click', function () {
+      var destCls = findClass(classSel.value); if (!destCls) return;
+      var destSubject = subjectById(destCls, subjSel.value); if (!destSubject) return;
+      okBtn.disabled = true; warn.textContent = 'Copying…';
+      copyAssignmentInto(srcSubject, a, destSubject, function () {
+        m.close(); saveSoon();
+        state.ui.selectedClassId = destCls.id; state.ui.classTab = destSubject.id; state.ui.subjectTab = 'assignments';
+        render();
+        setStatus('Copied “' + a.title + '” to ' + destCls.name + ' · ' + destSubject.name);
+      });
+    });
   }
 
   // ---------------------------------------------------------------- Modal: per-grade note
