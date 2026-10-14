@@ -51,12 +51,70 @@
         state.ui = Object.assign(state.ui, data.ui || {});
       }
       migrate();
+      committedSnap = snapshotClasses();   // baseline for undo history
       applyTheme();
       render();
+      updateUndoUI();
     });
   }
 
+  // ---------------------------------------------------------------- undo / redo
+  var committedSnap = null;   // JSON of the last-committed classes
+  var undoStack = [];         // snapshots we can step back to
+  var redoStack = [];
+  var MAX_HISTORY = 80;
+
+  function snapshotClasses() { return JSON.stringify(state.classes); }
+
+  // Record the pre-change state whenever the data actually changed. Called from
+  // saveSoon, the single funnel every mutation passes through.
+  function recordHistoryIfChanged() {
+    var cur = snapshotClasses();
+    if (committedSnap === null) { committedSnap = cur; return; }
+    if (cur === committedSnap) return;        // navigation / no data change
+    undoStack.push(committedSnap);
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack.length = 0;                      // a new change clears the redo trail
+    committedSnap = cur;
+    updateUndoUI();
+  }
+
+  function persistNow() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    window.api.save({ version: state.version, classes: state.classes, ui: state.ui })
+      .then(function (res) { setStatus(res && res.ok ? 'All changes saved' : 'Save error'); });
+  }
+
+  function applySnapshot(snap) {
+    state.classes = JSON.parse(snap);
+    committedSnap = snap;
+    // Keep the current view when it still exists; otherwise fall back sensibly.
+    if (!findClass(state.ui.selectedClassId)) state.ui.selectedClassId = state.classes.length ? state.classes[0].id : null;
+    render();   // renderMain re-resolves the subject tab against whatever exists now
+    persistNow();
+    updateUndoUI();
+  }
+
+  function undo() {
+    if (!undoStack.length) { setStatus('Nothing to undo'); return; }
+    redoStack.push(snapshotClasses());
+    applySnapshot(undoStack.pop());
+    setStatus('Undid last change');
+  }
+  function redo() {
+    if (!redoStack.length) { setStatus('Nothing to redo'); return; }
+    undoStack.push(snapshotClasses());
+    applySnapshot(redoStack.pop());
+    setStatus('Redid change');
+  }
+  function updateUndoUI() {
+    var u = $('#undo-btn'), r = $('#redo-btn');
+    if (u) u.disabled = !undoStack.length;
+    if (r) r.disabled = !redoStack.length;
+  }
+
   function saveSoon() {
+    recordHistoryIfChanged();
     setStatus('Saving…');
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
@@ -1783,6 +1841,18 @@
 
   // ---------------------------------------------------------------- chrome
   function wireChrome() {
+    $('#undo-btn').addEventListener('click', undo);
+    $('#redo-btn').addEventListener('click', redo);
+    document.addEventListener('keydown', function (e) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      var k = (e.key || '').toLowerCase();
+      if (k !== 'z' && k !== 'y') return;
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (document.querySelector('#modal-root .modal-backdrop')) return; // don't fight an open dialog
+      e.preventDefault();
+      if (k === 'y' || (k === 'z' && e.shiftKey)) redo(); else undo();
+    });
     $('#add-class-btn').addEventListener('click', function () { openClassModal(null); });
     $('#empty-add-class').addEventListener('click', function () { openClassModal(null); });
     $('#edit-class-btn').addEventListener('click', function () { var c = currentClass(); if (c) openClassModal(c); });
